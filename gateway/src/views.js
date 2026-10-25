@@ -11,13 +11,57 @@ function confirmScript() {
   return `<script>document.addEventListener('submit',function(e){var f=e.target;var m=f.getAttribute&&f.getAttribute('data-confirm');if(m&&!window.confirm(m)){e.preventDefault();}},true);</script>`;
 }
 
+function authScript() {
+  return `<script>(function(){
+    document.querySelectorAll('input[type="password"]').forEach(function(input){
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'pw-toggle'; btn.textContent = 'Show';
+      btn.setAttribute('aria-label', 'Show or hide password');
+      btn.addEventListener('click', function(){
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.textContent = show ? 'Hide' : 'Show';
+      });
+      input.insertAdjacentElement('afterend', btn);
+    });
+    var pw = document.querySelector('form[action="/merchant/register"] input[name="password"]');
+    if (pw) {
+      var hint = document.createElement('p');
+      hint.className = 'pw-strength muted small';
+      hint.textContent = 'Password strength: use at least 10 characters, with letters, numbers and a symbol for a stronger password.';
+      pw.insertAdjacentElement('afterend', hint);
+      pw.addEventListener('input', function(){
+        var v = pw.value, score = 0;
+        if (v.length >= 10) score++;
+        if (v.length >= 14) score++;
+        if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++;
+        if (/[0-9]/.test(v)) score++;
+        if (/[^A-Za-z0-9]/.test(v)) score++;
+        var label = score <= 1 ? 'Weak' : score <= 3 ? 'Fair' : 'Strong';
+        hint.textContent = 'Password strength: ' + label + ' (' + v.length + ' characters). Server requires at least 10 characters.';
+      });
+    }
+    document.querySelectorAll('form').forEach(function(form){
+      form.addEventListener('submit', function(){
+        form.querySelectorAll('button[type="submit"], .btn[type="submit"]').forEach(function(b){
+          if (!b.disabled) { b.disabled = true; b.setAttribute('data-original-text', b.textContent); b.textContent = 'Please wait…'; }
+        });
+      });
+    });
+  })();</script>`;
+}
+
+const AUTH_TITLES = ['Merchant login', 'Merchant registration', 'Admin login', 'Forgot password', 'Admin forgot password', 'Reset password', 'Admin reset password', 'Registration received'];
+
 const DISCLAIMER = 'A QR code, redirect, screenshot or “I have paid” click is never proof of payment. Orders stay pending until payment verification by manual reconciliation, a configured provider, or an optional external observer.';
 
 export function layout({ title, body, user, nav, variant, hideTitle }) {
+  const hasNav = Boolean(nav);
   const navHtml = nav || DEFAULT_PUBLIC_NAV;
   const isAdmin = /\/admin\//.test(navHtml);
   const isMerchant = /\/merchant\//.test(navHtml);
-  const shell = variant || (isAdmin ? 'admin' : isMerchant ? 'merchant' : 'public');
+  const isAuthPage = !user && !hasNav && AUTH_TITLES.includes(title);
+  const shell = variant || (isAuthPage ? 'auth' : isAdmin ? 'admin' : isMerchant ? 'merchant' : 'public');
   const safeTitle = escapeHtml(title);
   const head = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="YOUPI PG — multi-merchant UPI payment gateway with QR checkout, API, webhooks and manual payment verification."><title>${safeTitle} — YOUPI PG</title><link rel="stylesheet" href="/public/css/style.css"></head><body>`;
   const userActions = user
@@ -27,6 +71,10 @@ export function layout({ title, body, user, nav, variant, hideTitle }) {
   if (shell === 'merchant' || shell === 'admin') {
     const role = shell === 'admin' ? 'Administrator' : 'Merchant';
     return `${head}<a class="skip-link" href="#main">Skip to content</a><div class="shell"><aside class="sidebar" aria-label="${role} navigation">${brandHtml()}<nav class="sidebar-nav">${navHtml}</nav><div class="sidebar-foot"><p>${role} panel</p><p>${user ? escapeHtml(user.label) : ''}</p>${user ? `<p><a href="${escapeHtml(user.logout)}">Log out</a></p>` : ''}</div></aside><div class="shell-main"><header class="topbar">${brandHtml()}<details class="shell-menu"><summary>Menu</summary><nav>${navHtml}</nav></details><span class="topbar-title">${safeTitle}</span><div class="topbar-account">${userActions}</div></header><main id="main" class="wrap shell-wrap"><h1 class="page-title">${safeTitle}</h1>${body}</main><footer class="shell-footer">${DISCLAIMER}</footer></div></div>${confirmScript()}</body></html>`;
+  }
+
+  if (shell === 'auth') {
+    return `${head}<a class="skip-link" href="#main">Skip to content</a><div class="auth-shell"><aside class="auth-panel" aria-hidden="true">${brandHtml()}<h2>Payments, verified properly.</h2><p>UPI checkout, honest statuses, and APIs your developers will actually enjoy — with no false success, ever.</p><ul><li><strong>UPI QR checkout</strong> with exact amounts and references</li><li><strong>Manual reconciliation</strong> before any order succeeds</li><li><strong>API + signed webhooks</strong> for your own systems</li></ul><div class="auth-mock"><div class="auth-mock-row"><span>Order created</span><span class="badge pending">pending</span></div><div class="auth-mock-row"><span>Verified vs bank record</span><span class="badge success">success</span></div><div class="auth-mock-row"><span>Webhook delivered · signed</span><span class="badge success">success</span></div></div></aside><main id="main" class="auth-main"><div class="auth-card"><h1>${safeTitle}</h1>${body}</div><p class="muted small auth-foot"><a href="/">Back to homepage</a> · <a href="/pricing">Pricing</a> · <a href="/support">Support</a></p></main></div>${confirmScript()}${authScript()}</body></html>`;
   }
 
   if (shell === 'checkout') {

@@ -266,7 +266,7 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
   }
 
   function merchantNav() {
-    return `<a href="/merchant/dashboard">Dashboard</a> <a href="/merchant/orders">Orders</a> <a href="/merchant/orders/new">New order</a> <a href="/merchant/api-keys">API keys</a> <a href="/merchant/webhooks">Webhooks</a> <a href="/merchant/subscription">Subscription</a> <a href="/merchant/profile">Profile</a> <a href="/merchant/security">Security</a> <a href="/merchant/activity">Activity</a> <a href="/merchant/docs">Docs</a>`;
+    return `<a href="/merchant/dashboard">Dashboard</a> <a href="/merchant/orders">Orders</a> <a href="/merchant/orders/new">New order</a> <a href="/merchant/api-keys">API keys</a> <a href="/merchant/webhooks">Webhooks</a> <a href="/merchant/subscription">Subscription</a> <a href="/merchant/profile">Profile</a> <a href="/merchant/security">Security</a> <a href="/merchant/activity">Activity</a> <a href="/merchant/support">Support</a> <a href="/merchant/docs">Docs</a>`;
   }
   function adminNav() {
     return `<a href="/admin/dashboard">Dashboard</a> <a href="/admin/merchants">Merchants</a> <a href="/admin/orders">Orders</a> <a href="/admin/verify">Verification queue</a> <a href="/admin/plans">Plans</a> <a href="/admin/subscriptions">Subscriptions</a> <a href="/admin/usage">Usage</a> <a href="/admin/support">Support</a> <a href="/admin/webhooks">Webhooks</a> <a href="/admin/audit">Audit logs</a> <a href="/admin/settings">Settings</a>`;
@@ -320,7 +320,7 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
     <div class="landing">
       <section class="hero-band"><div class="hero-inner"><div>
         <span class="eyebrow">UPI payment gateway · Node.js + MySQL</span>
-        <h1>Accept UPI payments, reconcile every rupee.</h1>
+        <h1>Accept UPI payments, <span class="grad-text">reconcile every rupee.</span></h1>
         <p class="lead">Create payment links, share a QR checkout, track every order and verify each payment against your bank record — in one self-hosted app, with no Docker, Redis or PostgreSQL required.</p>
         <div class="hero-ctas"><a class="btn" href="/merchant/register">Get started free</a><a class="btn btn-ghost" href="/docs">Read developer docs</a></div>
         <div class="hero-proof"><span><strong>INR only</strong> · UPI checkout</span><span><strong>15 min</strong> · checkout expiry</span><span><strong>Manual verification</strong> · no false success</span></div>
@@ -336,6 +336,17 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
         <div class="feature-card"><div class="feature-icon" aria-hidden="true">↻</div><h3>Signed webhooks</h3><p>HMAC-signed event payloads with delivery history, bounded retries and manual retry from the dashboard.</p></div>
         <div class="feature-card"><div class="feature-icon" aria-hidden="true">✓</div><h3>Reconciliation</h3><p>Every order is checked against the bank record before it can succeed, with duplicate-UTR protection and an audit trail.</p></div>
       </div></section>
+      <section class="section" id="tour"><div class="section-head"><span class="chip">Product tour</span><h2>See the product before you sign up</h2><p>Original interface mockups of the real screens — payment links, transaction tracking, checkout and developer tools. These are illustrations of the layout, not live data.</p></div><div class="tour-grid">
+        <div class="mock"><div class="mock-top"><span>Payment link</span><span>Dashboard</span></div><div class="mock-body"><h3>Share a link, get paid</h3><p>Create an order, copy its checkout link, and share it anywhere. Amount and reference are fixed per order.</p><div class="mock-link">your-gateway.example/checkout/YP2026…</div></div></div>
+        <div class="mock"><div class="mock-top"><span>Transactions</span><span>Live statuses</span></div><div class="mock-body"><h3>Every order, one list</h3><div class="mock-row"><span>Order · ₹499.00</span><span class="badge pending">pending</span></div><div class="mock-row"><span>Order · ₹1,299.00</span><span class="badge processing">processing</span></div><div class="mock-row"><span>Order · ₹249.00</span><span class="badge success">success</span></div></div></div>
+        <div class="mock"><div class="mock-top"><span>UPI checkout</span><span>Mobile-first</span></div><div class="mock-body"><h3>Scan, pay, done</h3><p>Customers scan a QR code or open their UPI app. Status updates only after verification.</p><div class="mock-qr"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i></div><p class="muted small" style="text-align:center">Illustrative QR pattern — not a real payment code.</p></div></div>
+        <div class="mock"><div class="mock-top"><span>Developer tools</span><span>API + SDK</span></div><div class="mock-body"><h3>One call to create an order</h3><pre style="margin:0">POST /api/v1/orders
+→ 201 · status: "pending"
+→ checkout_url for your customer</pre></div></div>
+      </div>
+      <div class="feature-row"><div><h3>Checkout that respects the customer</h3><p>A focused, mobile-first page: merchant name, exact amount, QR code, UPI app button, expiry time and a live status banner. Nothing else competes for attention — and nothing on the page can fake a success.</p><p><a class="btn secondary" href="/features">Explore features</a></p></div><div class="feature-row-visual"><div class="mock"><div class="mock-top"><span>Checkout preview</span><span>Illustration</span></div><div class="mock-body" style="text-align:center"><p class="muted small">Pay to Example Store</p><p style="font-size:1.8rem;font-weight:800;color:var(--ink)">₹499.00</p><p><span class="badge pending">pending</span> · Expires in 15 minutes</p></div></div></div></div>
+      <div class="feature-row"><div><h3>Webhooks you can trust and trace</h3><p>Every status change is delivered as an HMAC-signed event with a delivery ID and timestamp, retried with bounded backoff, and listed with its response code and attempts — so your system and the gateway never disagree silently.</p><p><a class="btn secondary" href="/docs">Read the webhook docs</a></p></div><div class="feature-row-visual"><div class="mock"><div class="mock-top"><span>Webhook delivery</span><span>Signed</span></div><div class="mock-body"><div class="mock-row"><span>order.success</span><span class="badge success">delivered · 200</span></div><div class="mock-row"><span>order.expired</span><span class="badge success">delivered · 200</span></div><div class="mock-row"><span>X-Gateway-Signature</span><span class="muted small">sha256=…</span></div></div></div></div></div>
+      </section>
       <section class="section" id="workflow"><div class="section-head"><span class="chip">How it works</span><h2>From order to verified payment, in four steps</h2><p>No step is skipped, and no step can fake the next one.</p></div><div class="steps">
         <div class="step"><div class="step-num">1</div><h3>Create the order</h3><p>Dashboard or API. Amount in paise, INR only, unique gateway reference, optional return URL.</p></div>
         <div class="step"><div class="step-num">2</div><h3>Customer checks out</h3><p>QR code or UPI app deep link. Checkout expires after 15 minutes; one QR per merchant at a time.</p></div>
@@ -679,21 +690,50 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
 
   // ---------- Merchant auth ----------
   app.get('/merchant/register', (req, res) => {
-    res.send(layout({ title: 'Merchant registration', body: `<form method="post" action="/merchant/register">${field('Business name', 'business_name', 'text', '', 'required')}${field('Slug (lowercase, letters, numbers, hyphens)', 'slug', 'text', '', 'required')}${field('Contact email', 'contact_email', 'email', '', 'required')}${field('Contact phone', 'contact_phone', 'text', '')}${field('UPI ID', 'upi_id', 'text', '', 'required')}${field('Payee name', 'payee_name', 'text', '', 'required')}${field('Password (at least 10 characters)', 'password', 'password', '', 'required autocomplete="new-password"')}<p><button class="btn" type="submit">Register</button></p></form><p class="muted">New merchants start as pending. An administrator must approve the account before API orders can be created.</p>` }));
+    res.send(layout({ title: 'Merchant registration', body: `<form method="post" action="/merchant/register">${field('Business name', 'business_name', 'text', '', 'required placeholder="e.g. Acme Store"')}${field('Email address', 'contact_email', 'email', '', 'required placeholder="you@yourbusiness.example"')}${field('Password (at least 10 characters)', 'password', 'password', '', 'required autocomplete="new-password"')}${field('Confirm password', 'password_confirm', 'password', '', 'required autocomplete="new-password"')}<p><button class="btn" type="submit">Create account</button></p></form><p class="muted">New merchants start as pending. An administrator must approve the account before API orders can be created. UPI ID, payee details, API keys, webhooks and plan selection are set up after registration, from your onboarding checklist — not here.</p><p>Already have an account? <a href="/merchant/login">Log in</a></p>` }));
   });
 
   app.post('/merchant/register', loginLimiter, async (req, res) => {
     const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
     const businessName = cleanString(req.body.business_name, 255);
-    const slug = cleanString(req.body.slug, 100).toLowerCase();
     const email = cleanString(req.body.contact_email, 255);
     const phone = cleanString(req.body.contact_phone, 20);
+    // Optional at registration: UPI ID, payee name and phone are completed
+    // later from the onboarding checklist (profile page). Columns are
+    // already nullable, so no migration is needed for this simplification.
     const upiId = cleanString(req.body.upi_id, 255);
     const payeeName = cleanString(req.body.payee_name, 255);
     const password = req.body.password || '';
+    const passwordConfirm = req.body.password_confirm;
     function fail(msg) { return res.status(400).send(layout({ title: 'Merchant registration', body: alert('error', msg) + '<p><a href="/merchant/register">Back</a></p>' })); }
-    if (!businessName || !isSlug(slug) || !isEmail(email) || !isUpiId(upiId) || !payeeName || password.length < 10) {
-      return fail('Please check all fields: a valid slug, email, UPI ID and a password of at least 10 characters are required.');
+    if (!businessName || !isEmail(email) || password.length < 10) {
+      return fail('Please check your business name, a valid email address, and a password of at least 10 characters.');
+    }
+    if (passwordConfirm !== undefined && passwordConfirm !== password) {
+      return fail('Passwords do not match. Please re-enter your password and its confirmation.');
+    }
+    if (upiId && !isUpiId(upiId)) {
+      return fail('That UPI ID does not look valid. Leave it blank here and set it from your profile after registration, or enter a valid UPI ID.');
+    }
+    // Slug is required by the data model but is no longer asked for: derive
+    // it from the business name (or honour an explicitly supplied valid one
+    // from older clients), and make it unique.
+    const slugInput = cleanString(req.body.slug, 100).toLowerCase();
+    let slug = '';
+    if (slugInput) {
+      if (!isSlug(slugInput)) return fail('That slug is not valid. Use lowercase letters, numbers and hyphens (at least 3 characters).');
+      slug = slugInput;
+    } else {
+      let base = businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90);
+      if (base.length < 3) base = `merchant-${Math.random().toString(36).slice(2, 8)}`;
+      slug = base;
+      for (let attempt = 2; attempt <= 20; attempt += 1) {
+        const [taken] = await pool.query('SELECT id FROM merchants WHERE slug = ?', [slug]);
+        if (!taken[0]) break;
+        slug = `${base}-${attempt}`;
+      }
+      const [taken] = await pool.query('SELECT id FROM merchants WHERE slug = ?', [slug]);
+      if (taken[0]) slug = `${base}-${Math.random().toString(36).slice(2, 8)}`;
     }
     const [existing] = await pool.query('SELECT id FROM merchants WHERE slug = ? OR contact_email = ?', [slug, email]);
     if (existing[0]) return fail('A merchant with that slug or email already exists.');
@@ -701,17 +741,17 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
     try {
       await pool.query(
         'INSERT INTO merchants (id, business_name, slug, contact_email, contact_phone, password_hash, status, upi_id, payee_name, branding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, businessName, slug, email, phone || null, hashPassword(password), 'pending', upiId, payeeName, JSON.stringify({ appName: config.appName })],
+        [id, businessName, slug, email, phone || null, hashPassword(password), 'pending', upiId || null, payeeName || null, JSON.stringify({ appName: config.appName })],
       );
       await audit(pool, { actorType: 'merchant', actorId: id, merchantId: id, entityType: 'merchant', entityId: slug, action: 'merchant_registered', details: {}, ip: req.ip });
     } catch (err) {
       return fail(`Registration failed: ${escapeHtml(String(err?.message || err))}`);
     }
-    res.send(layout({ title: 'Registration received', body: '<div class="alert success">Registration received. Your account is pending approval by an administrator. You can log in to view your profile, but API orders are blocked until approval.</div><p><a class="btn" href="/merchant/login">Merchant login</a></p>' }));
+    res.send(layout({ title: 'Registration received', body: `<div class="alert success">Registration received. Your account is pending approval by an administrator. You can log in to view your profile, but API orders are blocked until approval.</div><h2>Your onboarding checklist</h2><p class="muted">Complete these steps after logging in — in this order:</p><ol><li><a href="/merchant/profile">Complete your merchant profile</a> (business details)</li><li><a href="/merchant/profile">Configure your UPI ID and payee name</a></li><li><a href="/merchant/dashboard">Review your account approval status</a> on the dashboard</li><li><a href="/merchant/api-keys">Configure API keys</a> if you need them</li><li><a href="/merchant/webhooks">Configure webhooks</a> if you need them</li><li><a href="/merchant/subscription">Review the available subscription plans</a></li></ol><p><a class="btn" href="/merchant/login">Merchant login</a></p>` }));
   });
 
   app.get('/merchant/login', (req, res) => {
-    res.send(layout({ title: 'Merchant login', body: `<form method="post" action="/merchant/login">${field('Email', 'email', 'email', '', 'required')}${field('Password', 'password', 'password', '', 'required')}<p><button class="btn" type="submit">Log in</button></p></form><p><a href="/merchant/forgot-password">Forgot password?</a> · <a href="/merchant/register">Register</a></p>` }));
+    res.send(layout({ title: 'Merchant login', body: `<form method="post" action="/merchant/login">${field('Email address', 'email', 'email', '', 'required placeholder="you@yourbusiness.example"')}${field('Password', 'password', 'password', '', 'required placeholder="Your password"')}<p><button class="btn" type="submit">Log in</button></p></form><p><a href="/merchant/forgot-password">Forgot password?</a> · <a href="/merchant/register">Create an account</a></p>` }));
   });
 
   app.post('/merchant/login', loginLimiter, async (req, res) => {
@@ -788,7 +828,7 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
       <p><strong>UPI ID:</strong> ${escapeHtml(m.upi_id || '—')} &nbsp; <strong>Payee:</strong> ${escapeHtml(m.payee_name || '—')}</p>
       <h2>Recent orders</h2>
       ${ordersTable(recent, { detailBase: '/merchant/orders' })}
-      <p><a class="btn" href="/merchant/orders/new">Create payment link</a> <a class="btn secondary" href="/merchant/orders">All orders</a> <a class="btn secondary" href="/merchant/api-keys">API keys</a> <a class="btn secondary" href="/merchant/docs">Integration docs</a></p>
+      <p><a class="btn" href="/merchant/orders/new">Create payment link</a> <a class="btn secondary" href="/merchant/orders">All orders</a> <a class="btn secondary" href="/merchant/api-keys">API keys</a> <a class="btn secondary" href="/merchant/docs">Integration docs</a> <a class="btn secondary" href="/merchant/support">Support</a></p>
     `;
     res.send(layout({ title: 'Merchant dashboard', body, user: { label: `${m.business_name} (${m.status})`, logout: '/merchant/logout' }, nav: merchantNav() }));
   });
@@ -1025,6 +1065,34 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
       await retryDueDeliveries(pool, config, { limit: 1 }).catch(() => {});
     }
     res.redirect('/merchant/webhooks');
+  });
+
+  app.get('/merchant/support', requireMerchant, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const [rows] = await pool.query('SELECT * FROM support_messages WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 50', [req.merchant.id]).catch(() => [[]]);
+    const body = `
+      <p class="lead">Ask support a question. Your messages go to the admin support queue, and admin replies appear here.</p>
+      <form method="post" action="/merchant/support">${csrfField(req.csrf)}${field('Subject', 'subject', 'text', '', 'required')}<label>Message<textarea name="message" rows="5" required style="width:100%;max-width:580px;padding:.62rem .8rem;border:1px solid #cbd5e1;border-radius:10px"></textarea></label><p><button class="btn" type="submit">Send message</button></p></form>
+      <h2>Your messages</h2>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>When</th><th>Subject</th><th>Status</th><th>Admin reply</th></tr></thead><tbody>${rows.map((m) => `<tr><td>${formatDate(m.created_at)}</td><td>${escapeHtml(m.subject)}</td><td>${escapeHtml(m.status)}</td><td>${escapeHtml(m.admin_reply || '—')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No support messages yet.</p>'}
+    `;
+    res.send(layout({ title: 'Support', body, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  app.post('/merchant/support', requireMerchant, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const subject = cleanString(req.body.subject || '', 255);
+    const message = cleanString(req.body.message || '', 5000);
+    if (!subject || !message) {
+      return res.status(400).send(layout({ title: 'Support', body: `<div class="alert error">Subject and message are required.</div><p><a href="/merchant/support">Back</a></p>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    try {
+      await pool.query('INSERT INTO support_messages (id, merchant_id, name, email, subject, message, status) VALUES (?, ?, ?, ?, ?, ?, ?)', [randomUUID(), req.merchant.id, req.merchant.business_name, req.merchant.contact_email, subject, message, 'open']);
+    } catch {
+      return res.status(503).send(layout({ title: 'Support', body: `<div class="alert error">Support messages are not available yet on this database. Ask an administrator to run pending migrations from Admin &gt; Settings.</div>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    await audit(pool, { actorType: 'merchant', actorId: req.merchant.id, merchantId: req.merchant.id, entityType: 'support_message', entityId: subject, action: 'support_created', details: {}, ip: req.ip });
+    res.redirect('/merchant/support');
   });
 
   app.get('/merchant/docs', requireMerchant, async (req, res) => {
@@ -1301,7 +1369,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
 
   // ---------- Admin ----------
   app.get('/admin/login', (req, res) => {
-    res.send(layout({ title: 'Admin login', body: `<form method="post" action="/admin/login">${field('Email', 'email', 'email', '', 'required')}${field('Password', 'password', 'password', '', 'required')}<p><button class="btn" type="submit">Log in</button></p></form><p><a href="/admin/forgot-password">Forgot password?</a></p>` }));
+    res.send(layout({ title: 'Admin login', body: `<form method="post" action="/admin/login">${field('Email address', 'email', 'email', '', 'required placeholder="admin@example.com"')}${field('Password', 'password', 'password', '', 'required placeholder="Your password"')}<p><button class="btn" type="submit">Log in</button></p></form><p><a href="/admin/forgot-password">Forgot password?</a></p>` }));
   });
 
   app.post('/admin/login', loginLimiter, async (req, res) => {
@@ -1338,23 +1406,38 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
 
   app.get('/admin/dashboard', requireAdmin, async (req, res) => {
     const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
-    const [mStats] = await pool.query("SELECT status, COUNT(*) AS n FROM merchants GROUP BY status");
-    const [oStats] = await pool.query("SELECT status, COUNT(*) AS n, COALESCE(SUM(amount_paise), 0) AS total FROM orders GROUP BY status");
+    // Optional date filter (YYYY-MM-DD, validated before use in SQL).
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const isRealDate = (v) => { if (!dateRe.test(v)) return false; const [y, m, d] = v.split('-').map(Number); const dt = new Date(Date.UTC(y, m - 1, d)); return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d; };
+    const from = isRealDate(String(req.query.from || '')) ? String(req.query.from) : '';
+    const to = isRealDate(String(req.query.to || '')) ? String(req.query.to) : '';
+    const rangeClause = (col) => (from || to) ? `WHERE ${col} >= '${from || '1970-01-01'} 00:00:00' AND ${col} < ${to ? `DATE_ADD('${to}', INTERVAL 1 DAY)` : 'UTC_TIMESTAMP()'}` : '';
+    const [mStats] = await pool.query(`SELECT status, COUNT(*) AS n FROM merchants ${rangeClause('created_at')} GROUP BY status`);
+    const [oStats] = await pool.query(`SELECT status, COUNT(*) AS n, COALESCE(SUM(amount_paise), 0) AS total FROM orders ${rangeClause('created_at')} GROUP BY status`);
     const [pendingMerchants] = await pool.query("SELECT * FROM merchants WHERE status = 'pending' ORDER BY created_at ASC LIMIT 10");
     const [queue] = await pool.query("SELECT COUNT(*) AS n FROM orders WHERE status = 'processing'");
-    const [recentOrders] = await pool.query('SELECT o.*, m.business_name FROM orders o JOIN merchants m ON m.id = o.merchant_id ORDER BY o.created_at DESC LIMIT 10');
+    const [recentOrders] = await pool.query(`SELECT o.*, m.business_name FROM orders o JOIN merchants m ON m.id = o.merchant_id ${rangeClause('o.created_at')} ORDER BY o.created_at DESC LIMIT 10`);
+    let subStats = null;
+    try { const [rows] = await pool.query('SELECT status, COUNT(*) AS n FROM merchant_subscriptions GROUP BY status'); subStats = rows; } catch { subStats = null; }
+    const [recentEvents] = await pool.query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 8');
     const mBy = {}; for (const r of mStats) mBy[r.status] = Number(r.n);
     const oBy = {}; let oTotal = 0; let successTotal = 0; for (const r of oStats) { oBy[r.status] = Number(r.n); oTotal += Number(r.n); if (r.status === 'success') successTotal = Number(r.total); }
+    const subBy = {}; if (subStats) for (const r of subStats) subBy[r.status] = Number(r.n);
     const body = `
-      <div class="grid">
+      <form method="get" action="/admin/dashboard" class="inline-form"><label>From<input type="date" name="from" value="${escapeHtml(from)}"></label><label>To<input type="date" name="to" value="${escapeHtml(to)}"></label><button type="submit">Filter</button>${(from || to) ? '<a class="btn secondary" href="/admin/dashboard">Clear</a>' : ''}</form>
+      <p class="muted">Showing: ${(from || to) ? `${escapeHtml(from || 'the beginning')} to ${escapeHtml(to || 'today')}` : 'all time'}. Pending merchants below are always all time, because they need action regardless of date.</p>
+      <div class="stat-grid">
         <div class="card"><h3>Merchants</h3><p class="big">${Object.values(mBy).reduce((a, b) => a + b, 0)}</p><p>Pending: ${mBy.pending || 0} · Approved: ${mBy.approved || 0} · Suspended: ${mBy.suspended || 0}</p></div>
         <div class="card"><h3>Orders</h3><p class="big">${oTotal}</p><p>Successful revenue: ${formatPaise(successTotal)}</p></div>
         <div class="card"><h3>Verification queue</h3><p class="big">${queue[0]?.n || 0}</p><p>Orders in processing awaiting verification.</p></div>
+        <div class="card"><h3>Subscriptions</h3>${subStats ? `<p class="big">${Object.values(subBy).reduce((a, b) => a + b, 0)}</p><p>Active: ${subBy.active || 0} · Pending payment: ${subBy.pending_payment || 0} · Cancelled: ${subBy.cancelled || 0}</p>` : '<p class="muted">Subscription data is unavailable until migrations are run (Admin &gt; Settings).</p>'}</div>
       </div>
       <h2>Pending merchants</h2>
       ${pendingMerchants.length ? `<table><thead><tr><th>Business</th><th>Email</th><th>UPI</th><th>Created</th></tr></thead><tbody>${pendingMerchants.map((m) => `<tr><td><a href="/admin/merchants/${escapeHtml(m.id)}">${escapeHtml(m.business_name)}</a></td><td>${escapeHtml(m.contact_email)}</td><td>${escapeHtml(m.upi_id || '—')}</td><td>${formatDate(m.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No pending merchants.</p>'}
       <h2>Recent orders</h2>
-      ${recentOrders.length ? `<table><thead><tr><th>Reference</th><th>Merchant</th><th>Amount</th><th>Status</th><th>Verified by</th><th>Created</th></tr></thead><tbody>${recentOrders.map((o) => `<tr><td><a href="/admin/orders/${escapeHtml(o.gateway_reference)}">${escapeHtml(o.gateway_reference)}</a></td><td>${escapeHtml(o.business_name)}</td><td>${formatPaise(o.amount_paise)}</td><td>${statusBadge(o.status)}</td><td>${escapeHtml(o.verification_source || 'none')}</td><td>${formatDate(o.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No orders yet.</p>'}
+      ${recentOrders.length ? `<div class="table-wrap"><table><thead><tr><th>Reference</th><th>Merchant</th><th>Amount</th><th>Status</th><th>Verified by</th><th>Created</th></tr></thead><tbody>${recentOrders.map((o) => `<tr><td><a href="/admin/orders/${escapeHtml(o.gateway_reference)}">${escapeHtml(o.gateway_reference)}</a></td><td>${escapeHtml(o.business_name)}</td><td>${formatPaise(o.amount_paise)}</td><td>${statusBadge(o.status)}</td><td>${escapeHtml(o.verification_source || 'none')}</td><td>${formatDate(o.created_at)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No orders yet.</p>'}
+      <h2>Recent operational events</h2>
+      ${recentEvents.length ? `<div class="table-wrap"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th></tr></thead><tbody>${recentEvents.map((a) => `<tr><td>${formatDate(a.created_at)}</td><td>${escapeHtml(a.actor_type)}: ${escapeHtml(a.actor_id || '—')}</td><td>${escapeHtml(a.action)}</td><td>${escapeHtml(a.entity_type)}: ${escapeHtml(a.entity_id)}</td></tr>`).join('')}</tbody></table></div><p><a class="btn secondary" href="/admin/audit">All audit logs</a></p>` : '<p class="muted">No audit events yet.</p>'}
     `;
     res.send(layout({ title: 'Admin dashboard', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
   });
@@ -1384,6 +1467,10 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     if (!m) return res.status(404).send(layout({ title: 'Merchant not found', body: '<p>Merchant not found.</p>' }));
     const [orders] = await pool.query('SELECT * FROM orders WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 20', [m.id]);
     const [keys] = await pool.query('SELECT key_prefix, key_type, name, status, created_at FROM merchant_api_keys WHERE merchant_id = ? ORDER BY created_at DESC', [m.id]);
+    const [merchantSubs] = await pool.query('SELECT ms.*, p.name AS plan_name FROM merchant_subscriptions ms JOIN subscription_plans p ON p.id = ms.plan_id WHERE ms.merchant_id = ? ORDER BY ms.created_at DESC LIMIT 10', [m.id]).catch(() => [[]]);
+    const merchantSubCurrent = await getCurrentSubscription(pool, m.id).catch(() => ({ plan: null }));
+    const merchantSubUsage = await getUsage(pool, m.id).catch(() => ({ ordersThisMonth: 0, apiOrdersThisMonth: 0 }));
+    const [merchantDeliveries] = await pool.query('SELECT * FROM webhook_deliveries WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 10', [m.id]);
     const body = `
       <p><strong>Business:</strong> ${escapeHtml(m.business_name)} &nbsp; <strong>Slug:</strong> ${escapeHtml(m.slug)} &nbsp; <strong>Status:</strong> ${statusBadge(m.status)}</p>
       <p><strong>Email:</strong> ${escapeHtml(m.contact_email)} &nbsp; <strong>Phone:</strong> ${escapeHtml(m.contact_phone || '—')} &nbsp; <strong>UPI:</strong> ${escapeHtml(m.upi_id || '—')} (${escapeHtml(m.payee_name || '—')})</p>
@@ -1394,7 +1481,11 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
       <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/verify-email" style="display:inline">${csrfField(req.csrf)}<button class="btn secondary" type="submit">Mark email verified (admin-confirmed)</button></form>
       <p class="muted">Mark email verified only after confirming the merchant's identity through support or another trusted channel. This is the fallback when no email service is configured to send a verification link.</p>
       <h2>Recent orders</h2>${ordersTable(orders, { detailBase: '/admin/orders' })}
-      <h2>API keys</h2>${keys.length ? `<table><thead><tr><th>Prefix</th><th>Type</th><th>Name</th><th>Status</th><th>Created</th></tr></thead><tbody>${keys.map((k) => `<tr><td><code>${escapeHtml(k.key_prefix)}</code></td><td>${escapeHtml(k.key_type)}</td><td>${escapeHtml(k.name || '—')}</td><td>${escapeHtml(k.status)}</td><td>${formatDate(k.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No API keys.</p>'}
+      <h2>API keys</h2>${keys.length ? `<div class="table-wrap"><table><thead><tr><th>Prefix</th><th>Type</th><th>Name</th><th>Status</th><th>Created</th></tr></thead><tbody>${keys.map((k) => `<tr><td><code>${escapeHtml(k.key_prefix)}</code></td><td>${escapeHtml(k.key_type)}</td><td>${escapeHtml(k.name || '—')}</td><td>${escapeHtml(k.status)}</td><td>${formatDate(k.created_at)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No API keys.</p>'}
+      <h2>Subscriptions</h2><p>Current plan: <strong>${escapeHtml(merchantSubCurrent.plan ? (merchantSubCurrent.plan.plan_name || merchantSubCurrent.plan.name) : '—')}</strong> · Usage this month: orders ${merchantSubUsage.ordersThisMonth} / ${merchantSubCurrent.plan && merchantSubCurrent.plan.transaction_limit !== null && merchantSubCurrent.plan.transaction_limit !== undefined ? escapeHtml(String(merchantSubCurrent.plan.transaction_limit)) : 'Unlimited'} · API orders ${merchantSubUsage.apiOrdersThisMonth} / ${merchantSubCurrent.plan && merchantSubCurrent.plan.api_limit !== null && merchantSubCurrent.plan.api_limit !== undefined ? escapeHtml(String(merchantSubCurrent.plan.api_limit)) : 'Unlimited'}</p>
+      ${merchantSubs.length ? `<div class="table-wrap"><table><thead><tr><th>Plan</th><th>Cycle</th><th>Price</th><th>Status</th><th>Payment</th><th>Expires</th></tr></thead><tbody>${merchantSubs.map((x) => `<tr><td>${escapeHtml(x.plan_name)}</td><td>${escapeHtml(x.billing_cycle)}</td><td>${formatPaise(x.plan_price_paise)}</td><td>${escapeHtml(x.status)}</td><td>${escapeHtml(x.payment_status)}</td><td>${formatDate(x.expires_at)}</td></tr>`).join('')}</tbody></table></div><p><a class="btn secondary" href="/admin/subscriptions">Manage subscriptions</a></p>` : '<p class="muted">No subscription records. The merchant is on the Free defaults.</p>'}
+      <h2>Webhook deliveries</h2>
+      ${merchantDeliveries.length ? `<div class="table-wrap"><table><thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>When</th></tr></thead><tbody>${merchantDeliveries.map((d) => `<tr><td>${escapeHtml(d.event_type)}</td><td>${escapeHtml(d.endpoint_url)}</td><td>${d.is_successful ? 'delivered' : 'pending/failed'} (${d.response_status || '—'})</td><td>${d.attempt_count}</td><td>${formatDate(d.created_at)}</td></tr>`).join('')}</tbody></table></div><p><a class="btn secondary" href="/admin/webhooks">All webhook deliveries</a></p>` : '<p class="muted">No webhook deliveries yet. Delivery secrets are never shown here.</p>'}
     `;
     res.send(layout({ title: `Merchant — ${m.business_name}`, body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
   });
@@ -1540,10 +1631,21 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const [rows] = await pool.query('SELECT w.*, m.business_name FROM webhook_deliveries w JOIN merchants m ON m.id = w.merchant_id ORDER BY w.created_at DESC LIMIT ? OFFSET ?', [perPage + 1, offset]);
     const hasMore = rows.length > perPage; const shown = hasMore ? rows.slice(0, perPage) : rows;
     const body = `
-      <form method="post" action="/cron/webhooks" style="display:inline"><p class="muted">Cron retries are protected by CRON_SECRET when set. The button below runs due retries immediately for this session only if cron protection allows it.</p></form>
-      ${shown.length ? `<table><thead><tr><th>Merchant</th><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>Next retry</th><th>When</th></tr></thead><tbody>${shown.map((d) => `<tr><td>${escapeHtml(d.business_name)}</td><td>${escapeHtml(d.event_type)}</td><td>${escapeHtml(d.endpoint_url)}</td><td>${d.is_successful ? 'delivered' : 'pending/failed'} (${d.response_status || '—'})</td><td>${d.attempt_count}</td><td>${formatDate(d.next_retry_at)}</td><td>${formatDate(d.created_at)}</td></tr>`).join('')}</tbody></table>${paginationLinks('/admin/webhooks?', page, perPage, hasMore)}` : '<p class="muted">No webhook deliveries yet.</p>'}
+      <p class="muted">Automatic retries run through POST /cron/webhooks (protected by CRON_SECRET when set). Administrators can also retry a failed delivery immediately with its Retry button below; merchants can retry their own deliveries from Merchant &gt; Webhooks. Delivery payloads and secrets are never shown here.</p>
+      ${shown.length ? `<div class="table-wrap"><table><thead><tr><th>Merchant</th><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>Next retry</th><th>When</th><th>Action</th></tr></thead><tbody>${shown.map((d) => `<tr><td>${escapeHtml(d.business_name)}</td><td>${escapeHtml(d.event_type)}</td><td>${escapeHtml(d.endpoint_url)}</td><td>${d.is_successful ? 'delivered' : 'pending/failed'} (${d.response_status || '—'})</td><td>${d.attempt_count}</td><td>${formatDate(d.next_retry_at)}</td><td>${formatDate(d.created_at)}</td><td>${!d.is_successful ? `<form method="post" action="/admin/webhooks/${escapeHtml(d.id)}/retry">${csrfField(req.csrf)}<button type="submit">Retry now</button></form>` : '—'}</td></tr>`).join('')}</tbody></table></div>${paginationLinks('/admin/webhooks?', page, perPage, hasMore)}` : '<p class="muted">No webhook deliveries yet.</p>'}
     `;
     res.send(layout({ title: 'Webhook monitoring', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  app.post('/admin/webhooks/:id/retry', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const [rows] = await pool.query('SELECT * FROM webhook_deliveries WHERE id = ?', [req.params.id]);
+    if (rows[0] && !rows[0].is_successful) {
+      await pool.query('UPDATE webhook_deliveries SET next_retry_at = UTC_TIMESTAMP() WHERE id = ?', [req.params.id]);
+      await retryDueDeliveries(pool, config, { limit: 1 }).catch(() => {});
+      await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: rows[0].merchant_id, entityType: 'webhook_delivery', entityId: req.params.id, action: 'webhook_retry_admin', details: {}, ip: req.ip });
+    }
+    res.redirect('/admin/webhooks');
   });
 
   app.get('/admin/audit', requireAdmin, async (req, res) => {
