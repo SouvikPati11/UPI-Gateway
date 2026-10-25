@@ -15,7 +15,7 @@
     "migrate": "node src/db/migrate.js --apply",
     "migrate:status": "node src/db/migrate.js --status",
     "start": "node src/index.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test --test-concurrency=1 tests/*.test.js"
   },
   "type": "module",
   "main": "src/index.js",

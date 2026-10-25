@@ -8,7 +8,7 @@ function brandHtml() {
 }
 
 function confirmScript() {
-  return `<script>document.addEventListener('submit',function(e){var f=e.target;var m=f.getAttribute&&f.getAttribute('data-confirm');if(m&&!window.confirm(m)){e.preventDefault();}},true);</script>`;
+  return `<script>document.addEventListener('submit',function(e){var f=e.target;var m=f.getAttribute&&f.getAttribute('data-confirm');if(m&&!window.confirm(m)){e.preventDefault();}},true);document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('table').forEach(function(table){var headers=[];table.querySelectorAll('thead th').forEach(function(th){headers.push(th.textContent.trim());});if(!headers.length)return;table.querySelectorAll('tbody tr').forEach(function(tr){tr.querySelectorAll('td').forEach(function(td,i){if(!td.getAttribute('data-label')&&headers[i])td.setAttribute('data-label',headers[i]);});});});});</script>`;
 }
 
 function authScript() {
@@ -74,7 +74,7 @@ export function layout({ title, body, user, nav, variant, hideTitle }) {
   }
 
   if (shell === 'auth') {
-    return `${head}<a class="skip-link" href="#main">Skip to content</a><div class="auth-shell"><aside class="auth-panel" aria-hidden="true">${brandHtml()}<h2>Payments, verified properly.</h2><p>UPI checkout, honest statuses, and APIs your developers will actually enjoy — with no false success, ever.</p><ul><li><strong>UPI QR checkout</strong> with exact amounts and references</li><li><strong>Manual reconciliation</strong> before any order succeeds</li><li><strong>API + signed webhooks</strong> for your own systems</li></ul><div class="auth-mock"><div class="auth-mock-row"><span>Order created</span><span class="badge pending">pending</span></div><div class="auth-mock-row"><span>Verified vs bank record</span><span class="badge success">success</span></div><div class="auth-mock-row"><span>Webhook delivered · signed</span><span class="badge success">success</span></div></div></aside><main id="main" class="auth-main"><div class="auth-card"><h1>${safeTitle}</h1>${body}</div><p class="muted small auth-foot"><a href="/">Back to homepage</a> · <a href="/pricing">Pricing</a> · <a href="/support">Support</a></p></main></div>${confirmScript()}${authScript()}</body></html>`;
+    return `${head}<a class="skip-link" href="#main">Skip to content</a><div class="auth-shell"><aside class="auth-panel" aria-hidden="true">${brandHtml()}<h2>Payments, verified properly.</h2><p>UPI checkout, honest statuses, and APIs your developers will actually enjoy — with no false success, ever.</p><ul><li><strong>UPI QR checkout</strong> with exact amounts and references</li><li><strong>Manual reconciliation</strong> before any order succeeds</li><li><strong>API + signed webhooks</strong> for your own systems</li></ul><div class="auth-mock"><div class="auth-mock-row"><span>Order created</span><span class="badge pending">pending</span></div><div class="auth-mock-row"><span>Verified vs bank record</span><span class="badge success">success</span></div><div class="auth-mock-row"><span>Webhook delivered · signed</span><span class="badge success">success</span></div></div></aside><main id="main" class="auth-main"><div class="auth-card"><h1>${safeTitle}</h1>${body}</div><p class="muted small auth-foot"><a href="/">Back to homepage</a> · <a href="/pricing">Pricing</a> · <a href="/support">Support</a> · <a href="/admin/login">Admin login</a></p></main></div>${confirmScript()}${authScript()}</body></html>`;
   }
 
   if (shell === 'checkout') {

@@ -762,7 +762,7 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
       return res.status(401).send(layout({ title: 'Merchant login', body: alert('error', 'Invalid email or password.') + '<p><a href="/merchant/login">Try again</a></p>' }));
     }
     const session = await createSession(pool, 'merchant', merchant.id, req.ip, req.headers['user-agent']);
-    res.cookie('gw_session', session.token, sessionCookieOptions(config));
+    res.cookie('gw_session', session.token, sessionCookieOptions(config, req));
     await audit(pool, { actorType: 'merchant', actorId: merchant.id, merchantId: merchant.id, entityType: 'merchant', entityId: merchant.slug, action: 'merchant_login', details: {}, ip: req.ip });
     res.redirect('/merchant/dashboard');
   });
@@ -771,7 +771,7 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
     const pool = poolOverride || (config.db.configured ? getPool(config) : null);
     const token = req.headers.cookie?.split(';').map((c) => c.trim()).find((c) => c.startsWith('gw_session='))?.slice('gw_session='.length);
     if (pool && token) await deleteSession(pool, decodeURIComponent(token));
-    res.clearCookie('gw_session', { path: '/' });
+    res.clearCookie('gw_session', { path: '/', httpOnly: true, secure: sessionCookieOptions(config, req).secure, sameSite: 'lax' });
     res.redirect('/');
   });
 
@@ -1381,7 +1381,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     }
     await pool.query('UPDATE admins SET last_login_at = UTC_TIMESTAMP() WHERE id = ?', [admin.id]);
     const session = await createSession(pool, 'admin', admin.id, req.ip, req.headers['user-agent']);
-    res.cookie('gw_session', session.token, sessionCookieOptions(config));
+    res.cookie('gw_session', session.token, sessionCookieOptions(config, req));
     await audit(pool, { actorType: 'admin', actorId: admin.id, merchantId: null, entityType: 'admin', entityId: admin.email, action: 'admin_login', details: {}, ip: req.ip });
     res.redirect('/admin/dashboard');
   });
@@ -1390,7 +1390,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const pool = poolOverride || (config.db.configured ? getPool(config) : null);
     const token = req.headers.cookie?.split(';').map((c) => c.trim()).find((c) => c.startsWith('gw_session='))?.slice('gw_session='.length);
     if (pool && token) await deleteSession(pool, decodeURIComponent(token));
-    res.clearCookie('gw_session', { path: '/' });
+    res.clearCookie('gw_session', { path: '/', httpOnly: true, secure: sessionCookieOptions(config, req).secure, sameSite: 'lax' });
     res.redirect('/');
   });
 

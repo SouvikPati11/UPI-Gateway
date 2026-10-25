@@ -344,3 +344,18 @@ dialog::backdrop{background:rgba(11,18,32,.5)}
   .tour-grid,.feature-row{grid-template-columns:1fr}
   .feature-row:nth-child(even) .feature-row-visual{order:0}
 }
+
+/* ---------- Rebuild: wrapping, grid shrink, mobile tables/buttons ---------- */
+.stat-grid>*,.feature-grid>*,.pricing-grid>*,.grid>*,.tour-grid>*,.footer-grid>*{min-width:0}
+.card,.mock,.auth-card,.alert,.empty-state{overflow-wrap:anywhere}
+.card p,.card li{overflow-wrap:anywhere}
+@media(max-width:720px){
+  .topbar-title{display:none}
+  .btn{white-space:normal;text-align:center}
+  .wrap>table,.card>table{border-collapse:collapse}
+  .wrap>table thead,.card>table thead{position:absolute;left:-9999px}
+  .wrap>table,.wrap>table tbody,.wrap>table tr,.wrap>table td,.card>table,.card>table tbody,.card>table tr,.card>table td{display:block;width:100%}
+  .wrap>table tr,.card>table tr{border-bottom:1px solid var(--border);padding:.5rem .9rem}
+  .wrap>table td,.card>table td{border:0;padding:.3rem 0;display:flex;justify-content:space-between;gap:1rem;text-align:right}
+  .wrap>table td::before,.card>table td::before{content:attr(data-label);font-weight:700;color:var(--muted);text-align:left}
+}
