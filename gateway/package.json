@@ -1,0 +1,21 @@
+{
+  "dependencies": {
+    "express": "^4.21.2",
+    "mysql2": "^3.11.5",
+    "qrcode": "^1.5.4"
+  },
+  "description": "YOUPI PG \u2014 single-application Express + MySQL multi-merchant UPI payment gateway for Hostinger / cPanel hosting.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "name": "youpi-gateway-cpanel",
+  "private": true,
+  "scripts": {
+    "migrate": "node src/db/migrate.js --apply",
+    "migrate:status": "node src/db/migrate.js --status",
+    "start": "node src/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "type": "module",
+  "version": "1.0.1"
+}
