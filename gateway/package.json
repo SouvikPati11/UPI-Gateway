@@ -17,5 +17,6 @@
     "test": "node --test tests/*.test.js"
   },
   "type": "module",
+  "main": "src/index.js",
   "version": "1.0.1"
 }
