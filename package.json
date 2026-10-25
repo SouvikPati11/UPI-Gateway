@@ -1,0 +1,19 @@
+{
+  "name": "upi-gateway",
+  "private": true,
+  "type": "module",
+  "version": "1.0.1",
+  "description": "YOUPI PG — Git deployment wrapper. The actual application lives in gateway/; this root file exists only so Hostinger's Git importer can detect a Node.js app at the repository root. It does not duplicate the app.",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "gateway"
+  ],
+  "scripts": {
+    "start": "node gateway/src/index.js",
+    "migrate": "npm --prefix gateway run migrate",
+    "migrate:status": "npm --prefix gateway run migrate:status",
+    "test": "npm --prefix gateway test"
+  }
+}
