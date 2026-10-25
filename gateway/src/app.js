@@ -272,15 +272,21 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
     return `<a href="/admin/dashboard">Dashboard</a> <a href="/admin/merchants">Merchants</a> <a href="/admin/orders">Orders</a> <a href="/admin/verify">Verification queue</a> <a href="/admin/plans">Plans</a> <a href="/admin/subscriptions">Subscriptions</a> <a href="/admin/usage">Usage</a> <a href="/admin/support">Support</a> <a href="/admin/webhooks">Webhooks</a> <a href="/admin/audit">Audit logs</a> <a href="/admin/settings">Settings</a>`;
   }
   function publicNav() {
-    return `<a href="/">Home</a> <a href="/features">Features</a> <a href="/pricing">Pricing</a> <a href="/docs">Docs</a> <a href="/faq">FAQ</a> <a href="/support">Support</a> <a href="/contact">Contact</a>`;
+    return `<a href="/features">Products</a> <a href="/#workflow">Solutions</a> <a href="/docs">Developers</a> <a href="/pricing">Pricing</a>`;
   }
   function planPriceText(plan, cycle = 'monthly') {
     const paise = cycle === 'annual' ? Number(plan.price_annual_paise || 0) : Number(plan.price_monthly_paise || 0);
     return paise === 0 ? 'Free' : `${formatPaise(paise)} / ${cycle === 'annual' ? 'year' : 'month'}`;
   }
-  function planCard(plan, cycle = 'monthly') {
+  function planCard(plan, cycle = 'monthly', featured = false) {
     const features = parsePlanFeatures(plan);
-    return `<div class="card"><h3>${escapeHtml(plan.name)}</h3><p class="big">${escapeHtml(planPriceText(plan, cycle))}</p><p>${escapeHtml(plan.description || '')}</p><p class="muted">Transactions / month: ${plan.transaction_limit === null || plan.transaction_limit === undefined ? 'Unlimited' : escapeHtml(String(plan.transaction_limit))} · API calls / month: ${plan.api_limit === null || plan.api_limit === undefined ? 'Unlimited' : escapeHtml(String(plan.api_limit))}</p>${features.length ? `<ul>${features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}<p><a class="btn" href="/merchant/register">Start with ${escapeHtml(plan.name)}</a></p></div>`;
+    return `<article class="plan-card${featured ? ' featured' : ''}">${featured ? '<span class="chip plan-badge">Most features</span>' : ''}<h3>${escapeHtml(plan.name)}</h3><p class="price">${escapeHtml(planPriceText(plan, cycle))}</p><p class="plan-desc">${escapeHtml(plan.description || '')}</p>${features.length ? `<ul>${features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}<p class="plan-limits">Transactions / month: ${plan.transaction_limit === null || plan.transaction_limit === undefined ? 'Unlimited' : escapeHtml(String(plan.transaction_limit))} · API calls / month: ${plan.api_limit === null || plan.api_limit === undefined ? 'Unlimited' : escapeHtml(String(plan.api_limit))}</p><p><a class="btn${featured ? '' : ' secondary'}" href="/merchant/register">Start with ${escapeHtml(plan.name)}</a></p></article>`;
+  }
+  function featuredPlanSlug(plans) {
+    if (!plans.length) return '';
+    let best = plans[0];
+    for (const q of plans) { if (parsePlanFeatures(q).length > parsePlanFeatures(best).length) best = q; }
+    return best.slug || '';
   }
 
   // ---------- Public ----------
@@ -309,38 +315,73 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
       try { plans = await getActivePlans(pool); } catch { plans = []; }
     }
     if (!plans.length) plans = FALLBACK_PLANS;
+    const featured = featuredPlanSlug(plans);
     const body = `
-      <div class="hero"><h2>Accept UPI payments for your business, without a complex setup.</h2><p class="lead">YOUPI PG is a multi-merchant UPI payment gateway: create payment links, share a QR checkout, track every order, and reconcile payments against your bank record. One Node.js app, one MySQL database, no Docker, Redis or PostgreSQL required.</p><p><a class="btn" href="/merchant/register">Register as a merchant</a> <a class="btn secondary" href="/merchant/login">Merchant login</a> <a class="btn secondary" href="/pricing">See pricing</a></p></div>
-      ${installed ? '' : '<div class="alert info">This application is not installed yet. <a href="/install">Open the installation wizard</a> to connect MySQL, run migrations and create the first administrator.</div>'}
-      <h2>What you get</h2>
-      <div class="grid">
-        <div class="card"><h3>UPI checkout</h3><p>Dynamic QR codes and UPI app deep links with the exact amount and gateway reference for every order. Checkout expires after 15 minutes.</p></div>
-        <div class="card"><h3>Merchant dashboard</h3><p>Orders, payment links, API keys, webhooks, subscriptions and activity — all scoped to your own account, never to another merchant's data.</p></div>
-        <div class="card"><h3>Safe verification</h3><p>A QR scan, a return from a UPI app, a screenshot or an “I have paid” click never marks an order successful. Orders succeed only after manual reconciliation or a configured, tested provider/observer.</p></div>
-        <div class="card"><h3>API and webhooks</h3><p>Secret-key API, signed webhooks with retries, an SDK for checkout links, and sandbox mode that is clearly separated from real payments.</p></div>
+    <div class="landing">
+      <section class="hero-band"><div class="hero-inner"><div>
+        <span class="eyebrow">UPI payment gateway · Node.js + MySQL</span>
+        <h1>Accept UPI payments, reconcile every rupee.</h1>
+        <p class="lead">Create payment links, share a QR checkout, track every order and verify each payment against your bank record — in one self-hosted app, with no Docker, Redis or PostgreSQL required.</p>
+        <div class="hero-ctas"><a class="btn" href="/merchant/register">Get started free</a><a class="btn btn-ghost" href="/docs">Read developer docs</a></div>
+        <div class="hero-proof"><span><strong>INR only</strong> · UPI checkout</span><span><strong>15 min</strong> · checkout expiry</span><span><strong>Manual verification</strong> · no false success</span></div>
       </div>
-      <h2>Pricing</h2>
-      <p class="muted">Plans below are the currently active plans in this installation. An administrator can change them in Admin &gt; Plans. Subscription billing is separate from the payments your customers make to you.</p>
-      <div class="grid">${plans.map((p) => planCard(p)).join('')}</div>
-      <p><a class="btn secondary" href="/pricing">Full pricing</a> <a class="btn secondary" href="/features">All features</a> <a class="btn secondary" href="/docs">Developer docs</a> <a class="btn secondary" href="/faq">FAQ</a></p>
-      <h2>How payment verification works here</h2>
-      <p>Scanning a QR code, opening a UPI app, returning to the site, uploading a screenshot, or clicking “I have paid” <strong>never</strong> marks an order successful. An order stays pending until it is verified by manual reconciliation, a configured provider, or an optional external observer — and the verification source is shown on every order. Sandbox orders are clearly labelled TEST and use synthetic references, never real bank confirmations.</p>
-      <p><a href="/merchant/register">Register as a merchant</a> · <a href="/merchant/login">Merchant login</a> · <a href="/admin/login">Admin login</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refund policy</a> · <a href="/terms">Terms</a></p>
+      <div><div class="preview" role="img" aria-label="Illustrative preview of the merchant dashboard"><div class="preview-bar"><i></i><i></i><i></i><span style="margin-left:.4rem">Merchant dashboard — preview</span></div><div class="preview-body"><div class="preview-side"><span class="active">Dashboard</span><span>Orders</span><span>API keys</span><span>Webhooks</span><span>Subscription</span></div><div class="preview-main"><div class="row"><span>Order created · QR checkout</span><span class="badge pending">pending</span></div><div class="row"><span>Customer opened UPI app</span><span class="badge processing">processing</span></div><div class="row"><span>Verified against bank record</span><span class="badge success">success</span></div><div class="row"><span>Webhook delivered · signed</span><span class="badge success">success</span></div></div></div></div><p class="preview-caption">Illustrative preview of the dashboard layout — not live data. Your orders appear here after you sign in.</p></div>
+      </div></section>
+      ${installed ? '' : '<div class="alert info">This application is not installed yet. <a href="/install">Open the installation wizard</a> to connect MySQL, run migrations and create the first administrator.</div>'}
+      <section class="section" id="features"><div class="section-head"><span class="chip">Product</span><h2>Everything a UPI business needs, in one place</h2><p>Payment links, checkout, reconciliation, APIs and subscriptions — built for merchants and developers, not bolted on.</p></div><div class="feature-grid">
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">↗</div><h3>Payment links</h3><p>Create an order from the dashboard or API and share its checkout link anywhere — no website changes required.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">▦</div><h3>UPI QR checkout</h3><p>Dynamic QR codes and UPI app deep links with the exact amount and gateway reference fixed per order.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">☰</div><h3>Transaction management</h3><p>Search by reference, merchant order ID or UTR, filter by status, and open any order for its full event history.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">&lt;/&gt;</div><h3>APIs &amp; SDK</h3><p>Secret-key REST API and a browser SDK that never needs a secret key in frontend code.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">↻</div><h3>Signed webhooks</h3><p>HMAC-signed event payloads with delivery history, bounded retries and manual retry from the dashboard.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">✓</div><h3>Reconciliation</h3><p>Every order is checked against the bank record before it can succeed, with duplicate-UTR protection and an audit trail.</p></div>
+      </div></section>
+      <section class="section" id="workflow"><div class="section-head"><span class="chip">How it works</span><h2>From order to verified payment, in four steps</h2><p>No step is skipped, and no step can fake the next one.</p></div><div class="steps">
+        <div class="step"><div class="step-num">1</div><h3>Create the order</h3><p>Dashboard or API. Amount in paise, INR only, unique gateway reference, optional return URL.</p></div>
+        <div class="step"><div class="step-num">2</div><h3>Customer checks out</h3><p>QR code or UPI app deep link. Checkout expires after 15 minutes; one QR per merchant at a time.</p></div>
+        <div class="step"><div class="step-num">3</div><h3>Verify the payment</h3><p>Manual reconciliation against the bank record, or a configured provider/observer confirmation. A scan or “I have paid” click only moves the order to processing.</p></div>
+        <div class="step"><div class="step-num">4</div><h3>Final status &amp; webhook</h3><p>Success, failure, expiry or refund — recorded with its verification source and delivered to your webhook, signed.</p></div>
+      </div></section>
+      <section class="section" id="developers"><div class="section-head"><span class="chip">Developers</span><h2>Integrate in one API call</h2><p>Your server creates the order with a secret key; the browser only ever sees the checkout URL.</p></div><div class="code-card"><div><h3>Same endpoints the dashboard uses</h3><p>Secret keys are shown once, stored only as hashes, and work only for approved merchants on their own account. Sandbox mode is clearly labelled TEST and never produces a real bank confirmation.</p><p><a class="btn" href="/docs">Full developer docs</a> <a class="btn secondary" href="/merchant/docs">Integration guide</a></p></div><pre>POST /api/v1/orders
+Authorization: Bearer sk_YOUR_SECRET_KEY
+
+{
+  "merchant_order_id": "ORDER-1001",
+  "amount_paise": 49900,
+  "currency": "INR",
+  "return_url": "https://yourstore.example/done"
+}
+
+→ 201 · status: "pending"
+→ checkout_url for your customer</pre></div></section>
+      <section class="section" id="pricing"><div class="section-head"><span class="chip">Pricing</span><h2>Plans that scale with your volume</h2><p>These are the currently active plans in this installation; an administrator can change them in Admin &gt; Plans. Subscription billing is separate from the payments your customers make to you.</p></div><div class="pricing-grid">${plans.map((p) => planCard(p, 'monthly', p.slug === featured)).join('')}</div><p style="margin-top:1.25rem"><a class="btn secondary" href="/pricing">Compare all plans &amp; billing cycles</a></p></section>
+      <section class="section" id="security"><div class="section-head"><span class="chip">Security &amp; reliability</span><h2>Protections that are actually implemented</h2><p>Nothing here is aspirational — each item below is enforced in code today.</p></div><div class="security-grid">
+        <div class="card"><h3>Verified success only</h3><p>How payment verification works here: a QR scan, a UPI app return, a screenshot or an “I have paid” click never marks an order successful. Success requires manual reconciliation or a configured, tested provider/observer.</p></div>
+        <div class="card"><h3>Credentials done right</h3><p>Passwords use scrypt hashing. API secrets are stored only as prefix + SHA-256 hash and shown once. Webhook secrets are encrypted at rest and never appear in logs or API responses.</p></div>
+        <div class="card"><h3>Isolation &amp; audit</h3><p>Every merchant query and API check is scoped to that merchant. CSRF protection, rate limiting, SSRF checks on webhook URLs and audit logs cover sensitive actions.</p></div>
+      </div></section>
+      <section class="section" id="faq"><div class="section-head"><span class="chip">FAQ</span><h2>Questions merchants actually ask</h2></div><div class="faq-list">
+        <details><summary>Is a QR scan proof of payment?</summary><p>No. It only moves an order to processing. Success needs manual reconciliation or a configured provider/observer confirmation.</p></details>
+        <details><summary>Do you automatically verify payments with a bank?</summary><p>Not by default. No bank/provider integration ships in this codebase; configure and test one first, or use the safe manual workflow.</p></details>
+        <details><summary>What does a refund mean here?</summary><p>A recorded refund in the gateway with a REFUNDED webhook. It does not automatically move money back at the bank.</p></details>
+      </div><p style="margin-top:1rem"><a href="/faq">Read all FAQs</a> · <a href="/contact">Contact support</a></p></section>
+      <section class="cta-band"><h2>Start accepting UPI payments today</h2><p>Register, get approved by an administrator, and create your first payment link — sandbox first, live when you are ready.</p><p><a class="btn" href="/merchant/register">Register as a merchant</a> <a class="btn btn-ghost" href="/pricing">See pricing</a></p></section>
+    </div>
     `;
-    res.send(layout({ title: 'YOUPI PG — Multi-Merchant UPI Gateway', body, nav: publicNav() }));
+    res.send(layout({ title: 'YOUPI PG — Multi-Merchant UPI Gateway', body, nav: publicNav(), hideTitle: true }));
   });
 
   // ---------- Public pages (real content, no fake metrics) ----------
   app.get('/features', async (req, res) => {
     const body = `
       <p class="lead">Everything a small or growing business needs to accept UPI payments, in one installation.</p>
-      <div class="grid">
-        <div class="card"><h3>Payment links and QR checkout</h3><p>Create an order from the dashboard or the API, share its checkout link, and let customers pay by scanning a QR code or opening their UPI app. Amount, currency (INR only) and gateway reference are fixed per order.</p></div>
-        <div class="card"><h3>Transaction history and search</h3><p>Search by gateway reference, merchant order ID or UTR, filter by status, and open any order to see its full event history and webhook deliveries.</p></div>
-        <div class="card"><h3>Manual reconciliation</h3><p>An admin compares each pending order against the merchant's official bank record before marking it successful, with duplicate-UTR protection and an audit trail.</p></div>
-        <div class="card"><h3>API, SDK and webhooks</h3><p>Secret-key REST API, a checkout SDK that never needs a secret in the browser, and HMAC-signed webhooks with delivery history and retries.</p></div>
-        <div class="card"><h3>Subscriptions</h3><p>Configurable plans with transaction and API limits, usage tracking, upgrade/downgrade requests, and admin-verified manual billing for paid plans.</p></div>
-        <div class="card"><h3>Security</h3><p>Hashed passwords, hashed API secrets, encrypted webhook secrets, CSRF protection on account forms, rate limiting, merchant isolation on every query, and audit logs for sensitive actions.</p></div>
+      <div class="feature-grid">
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">↗</div><h3>Payment links and QR checkout</h3><p>Create an order from the dashboard or the API, share its checkout link, and let customers pay by scanning a QR code or opening their UPI app. Amount, currency (INR only) and gateway reference are fixed per order.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">☰</div><h3>Transaction history and search</h3><p>Search by gateway reference, merchant order ID or UTR, filter by status, and open any order to see its full event history and webhook deliveries.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">✓</div><h3>Manual reconciliation</h3><p>An admin compares each pending order against the merchant's official bank record before marking it successful, with duplicate-UTR protection and an audit trail.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">&lt;/&gt;</div><h3>API, SDK and webhooks</h3><p>Secret-key REST API, a checkout SDK that never needs a secret in the browser, and HMAC-signed webhooks with delivery history and retries.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">⬢</div><h3>Subscriptions</h3><p>Configurable plans with transaction and API limits, usage tracking, upgrade/downgrade requests, and admin-verified manual billing for paid plans.</p></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true">◈</div><h3>Security</h3><p>Hashed passwords, hashed API secrets, encrypted webhook secrets, CSRF protection on account forms, rate limiting, merchant isolation on every query, and audit logs for sensitive actions.</p></div>
       </div>
       <p><a class="btn" href="/merchant/register">Register as a merchant</a> <a class="btn secondary" href="/pricing">See pricing</a></p>
     `;
@@ -355,8 +396,10 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
     const cycle = req.query.cycle === 'annual' ? 'annual' : 'monthly';
     const body = `
       <p class="lead">Choose a plan. Prices are in INR, per merchant account. An administrator can change plan names, prices, limits and features in Admin &gt; Plans.</p>
-      <p><a class="btn secondary" href="/pricing?cycle=monthly">Monthly</a> <a class="btn secondary" href="/pricing?cycle=annual">Annual</a></p>
-      <div class="grid">${plans.map((p) => planCard(p, cycle)).join('')}</div>
+      <div class="tabs"><a href="/pricing?cycle=monthly" ${cycle === 'monthly' ? 'aria-current="page"' : ''}>Monthly billing</a><a href="/pricing?cycle=annual" ${cycle === 'annual' ? 'aria-current="page"' : ''}>Annual billing</a></div>
+      <div class="pricing-grid">${plans.map((p) => planCard(p, cycle, p.slug === featuredPlanSlug(plans))).join('')}</div>
+      <h2>Plan comparison</h2>
+      <div class="table-wrap"><table><thead><tr><th>Plan</th><th>Monthly</th><th>Annual</th><th>Transactions / month</th><th>API calls / month</th></tr></thead><tbody>${plans.map((p) => `<tr><td><strong>${escapeHtml(p.name)}</strong></td><td>${escapeHtml(planPriceText(p, 'monthly'))}</td><td>${escapeHtml(planPriceText(p, 'annual'))}</td><td>${p.transaction_limit === null || p.transaction_limit === undefined ? 'Unlimited' : escapeHtml(String(p.transaction_limit))}</td><td>${p.api_limit === null || p.api_limit === undefined ? 'Unlimited' : escapeHtml(String(p.api_limit))}</td></tr>`).join('')}</tbody></table></div>
       <h2>How subscription billing works</h2>
       <p>Subscription billing is separate from the payments your customers make to you. A subscription record alone is not proof that the subscription fee was paid. For a paid plan, a merchant requests an upgrade and an administrator verifies the subscription payment through manual billing before the plan becomes active. Free plans need no payment. If no payment provider is configured for subscriptions, only manual billing is available — that limitation is stated here deliberately, not hidden.</p>
       <p>Expired subscriptions get a 7-day grace period (where a grace date is set). After grace ends, new order creation is blocked until the subscription is renewed or changed. Existing order history and status checks remain available.</p>
@@ -735,7 +778,7 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
         <div class="card"><h3>Subscription</h3><p class="big">${escapeHtml(subPlanName)}</p><p>Status: ${escapeHtml(subCurrent.subscription ? subCurrent.subscription.status : 'Free (no subscription record)')} · Orders this month: ${subUsage.ordersThisMonth}</p><p><a class="btn secondary" href="/merchant/subscription">Manage subscription</a></p></div>
         <div class="card"><h3>Onboarding checklist</h3><ul>${onboarding.map((o) => `<li>${o.done ? '✓' : '○'} ${escapeHtml(o.text)} ${o.done ? '' : `— <a href="${o.href}">Complete</a>`}</li>`).join('')}</ul></div>
       </div>
-      <div class="grid">
+      <div class="stat-grid">
         <div class="card"><h3>Total orders</h3><p class="big">${totalOrders}</p></div>
         <div class="card"><h3>Successful revenue</h3><p class="big">${formatPaise(successTotal)}</p></div>
         <div class="card"><h3>Pending</h3><p class="big">${byStatus.pending || 0}</p></div>
@@ -885,7 +928,7 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
     const body = `${shownKey}
       <form method="post" action="/merchant/api-keys">${csrfField(req.csrf)}<label>Key name<input name="name" placeholder="e.g. Website production"></label><label>Type<select name="key_type"><option value="secret">Secret (for server-side API calls)</option><option value="public">Public (publishable, for SDK identification)</option></select></label><p><button class="btn" type="submit">Create API key</button></p></form>
       <p class="muted"><strong>Never put a secret key in browser JavaScript, HTML, or a mobile app.</strong> Secret keys belong on your server only. Public keys may be used in the browser to identify your merchant account.</p>
-      ${keys.length ? `<table><thead><tr><th>Prefix</th><th>Type</th><th>Name</th><th>Public value</th><th>Status</th><th>Last used</th><th>Created</th><th>Actions</th></tr></thead><tbody>${keys.map((k) => `<tr><td><code>${escapeHtml(k.key_prefix)}</code></td><td>${escapeHtml(k.key_type)}</td><td>${escapeHtml(k.name || '—')}</td><td>${escapeHtml(k.public_value || '—')}</td><td>${escapeHtml(k.status)}</td><td>${formatDate(k.last_used_at)}</td><td>${formatDate(k.created_at)}</td><td>${k.status === 'active' ? `<form method="post" action="/merchant/api-keys/${escapeHtml(k.id)}/revoke" style="display:inline">${csrfField(req.csrf)}<button type="submit">Revoke</button></form> <form method="post" action="/merchant/api-keys/${escapeHtml(k.id)}/rotate" style="display:inline">${csrfField(req.csrf)}<button type="submit">Rotate</button></form>` : '—'}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No API keys yet.</p>'}
+      ${keys.length ? `<table><thead><tr><th>Prefix</th><th>Type</th><th>Name</th><th>Public value</th><th>Status</th><th>Last used</th><th>Created</th><th>Actions</th></tr></thead><tbody>${keys.map((k) => `<tr><td><code>${escapeHtml(k.key_prefix)}</code></td><td>${escapeHtml(k.key_type)}</td><td>${escapeHtml(k.name || '—')}</td><td>${escapeHtml(k.public_value || '—')}</td><td>${escapeHtml(k.status)}</td><td>${formatDate(k.last_used_at)}</td><td>${formatDate(k.created_at)}</td><td>${k.status === 'active' ? `<form method="post" action="/merchant/api-keys/${escapeHtml(k.id)}/revoke" style="display:inline" data-confirm="Revoke this API key? Any integration using it will stop working immediately.">${csrfField(req.csrf)}<button type="submit">Revoke</button></form> <form method="post" action="/merchant/api-keys/${escapeHtml(k.id)}/rotate" style="display:inline">${csrfField(req.csrf)}<button type="submit">Rotate</button></form>` : '—'}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No API keys yet.</p>'}
     `;
     res.send(layout({ title: 'API keys', body, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
   });
@@ -1030,7 +1073,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
       ${current.isExpired ? '<div class="alert error">Your subscription has expired and the grace period has ended. New order creation is blocked until you renew or change your plan.</div>' : ''}
       <div class="grid">
         <div class="card"><h3>Current plan</h3><p class="big">${escapeHtml(plan ? (plan.plan_name || plan.name) : '—')}</p><p>Status: ${escapeHtml(current.subscription ? current.subscription.status : 'Free (no subscription record)')} · Payment: ${escapeHtml(current.subscription ? current.subscription.payment_status : 'not_required')}</p><p>${current.subscription ? `Started: ${formatDate(current.subscription.started_at)} · Renews: ${formatDate(current.subscription.renews_at)} · Expires: ${formatDate(current.subscription.expires_at)} · Grace until: ${formatDate(current.subscription.grace_until)}` : 'Free plan: no expiry date in this installation.'}</p></div>
-        <div class="card"><h3>Usage this month</h3><p>Orders: ${usage.ordersThisMonth} / ${plan && plan.transaction_limit !== null && plan.transaction_limit !== undefined ? escapeHtml(String(plan.transaction_limit)) : 'Unlimited'}</p><p>API orders: ${usage.apiOrdersThisMonth} / ${plan && plan.api_limit !== null && plan.api_limit !== undefined ? escapeHtml(String(plan.api_limit)) : 'Unlimited'}</p></div>
+        <div class="card"><h3>Usage this month</h3><p class="usage-row">Orders: <strong>${usage.ordersThisMonth} / ${plan && plan.transaction_limit !== null && plan.transaction_limit !== undefined ? escapeHtml(String(plan.transaction_limit)) : 'Unlimited'}</strong></p>${plan && plan.transaction_limit ? `<div class="meter" role="img" aria-label="Transaction usage"><i style="width:${Math.min(100, Math.round((usage.ordersThisMonth / plan.transaction_limit) * 100))}%"></i></div>` : ''}<p class="usage-row">API orders: <strong>${usage.apiOrdersThisMonth} / ${plan && plan.api_limit !== null && plan.api_limit !== undefined ? escapeHtml(String(plan.api_limit)) : 'Unlimited'}</strong></p>${plan && plan.api_limit ? `<div class="meter" role="img" aria-label="API usage"><i style="width:${Math.min(100, Math.round((usage.apiOrdersThisMonth / plan.api_limit) * 100))}%"></i></div>` : ''}<p class="muted small">Limits are enforced on the server when an order is created. Usage counts reset each calendar month.</p></div>
       </div>
       <p><a class="btn" href="/merchant/subscription/change">Change plan</a> <a class="btn secondary" href="/pricing">See all plans</a></p>
       <p class="muted">Subscription billing is separate from the payments your customers make to you. A subscription record alone is not proof that the subscription fee was paid. Paid plans become active only after an administrator verifies the subscription payment through manual billing (or a configured provider confirmation, which is not included here).</p>
@@ -1346,7 +1389,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
       <p><strong>Email:</strong> ${escapeHtml(m.contact_email)} &nbsp; <strong>Phone:</strong> ${escapeHtml(m.contact_phone || '—')} &nbsp; <strong>UPI:</strong> ${escapeHtml(m.upi_id || '—')} (${escapeHtml(m.payee_name || '—')})</p>
       <p><strong>Webhook:</strong> ${escapeHtml(m.webhook_url || 'not set')} &nbsp; <strong>Suspension reason:</strong> ${escapeHtml(m.suspension_reason || '—')}</p>
       <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/approve" style="display:inline">${csrfField(req.csrf)}<button class="btn" type="submit">Approve</button></form>
-      <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/suspend" style="display:inline">${csrfField(req.csrf)}<input name="reason" placeholder="Reason (required for suspension/rejection)" style="width:280px"><button type="submit">Suspend / Reject</button></form>
+      <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/suspend" style="display:inline" data-confirm="Suspend or reject this merchant? Their checkout will become unavailable.">${csrfField(req.csrf)}<input name="reason" placeholder="Reason (required for suspension/rejection)" style="width:280px"><button type="submit">Suspend / Reject</button></form>
       <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/reactivate" style="display:inline">${csrfField(req.csrf)}<button class="btn secondary" type="submit">Reactivate</button></form>
       <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/verify-email" style="display:inline">${csrfField(req.csrf)}<button class="btn secondary" type="submit">Mark email verified (admin-confirmed)</button></form>
       <p class="muted">Mark email verified only after confirming the merchant's identity through support or another trusted channel. This is the fallback when no email service is configured to send a verification link.</p>
@@ -1419,7 +1462,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
       <p><strong>Merchant:</strong> ${escapeHtml(order.business_name)} (${escapeHtml(order.contact_email)}) &nbsp; <strong>Merchant order:</strong> ${escapeHtml(order.merchant_order_id)} &nbsp; <strong>Mode:</strong> ${escapeHtml(order.mode || 'live')}</p>
       <p><strong>Amount:</strong> ${formatPaise(order.amount_paise)} &nbsp; <strong>Status:</strong> ${statusBadge(order.status)} &nbsp; <strong>Verified by:</strong> ${escapeHtml(order.verification_source || 'none')} &nbsp; <strong>UTR:</strong> ${escapeHtml(order.verification_utr || '—')}</p>
       <p><strong>Checkout:</strong> <a href="/checkout/${escapeHtml(order.gateway_reference)}">/checkout/${escapeHtml(order.gateway_reference)}</a></p>
-      ${order.status === 'success' ? `<h2>Record a refund</h2><p class="muted">This records a refund in the gateway and sends a REFUNDED webhook to the merchant. It does not automatically move money back at the bank — record the actual bank refund separately, then record it here.</p><form method="post" action="/admin/orders/${escapeHtml(order.gateway_reference)}/refund">${csrfField(req.csrf)}${field('Refund reason (optional)', 'refund_reason', 'text', '')}<p><button class="btn" type="submit">Record refund</button></p></form>` : ''}
+      ${order.status === 'success' ? `<h2>Record a refund</h2><p class="muted">This records a refund in the gateway and sends a REFUNDED webhook to the merchant. It does not automatically move money back at the bank — record the actual bank refund separately, then record it here.</p><form method="post" action="/admin/orders/${escapeHtml(order.gateway_reference)}/refund" data-confirm="Record this refund? This is a gateway record only — it does not move money back at the bank.">${csrfField(req.csrf)}${field('Refund reason (optional)', 'refund_reason', 'text', '')}<p><button class="btn" type="submit">Record refund</button></p></form>` : ''}
       <h2>Events</h2>${events.length ? `<table><thead><tr><th>Event</th><th>From</th><th>To</th><th>Source</th><th>When</th></tr></thead><tbody>${events.map((e) => `<tr><td>${escapeHtml(e.event_type)}</td><td>${escapeHtml(e.status_from || '—')}</td><td>${escapeHtml(e.status_to || '—')}</td><td>${escapeHtml(e.source || '—')}</td><td>${formatDate(e.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No events yet.</p>'}
       <h2>Webhook deliveries</h2>${deliveries.length ? `<table><thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>When</th></tr></thead><tbody>${deliveries.map((d) => `<tr><td>${escapeHtml(d.event_type)}</td><td>${escapeHtml(d.endpoint_url)}</td><td>${d.is_successful ? 'delivered' : 'pending/failed'} (${d.response_status || '—'})</td><td>${d.attempt_count}</td><td>${formatDate(d.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No webhook deliveries for this order.</p>'}
       <p><a class="btn secondary" href="/admin/verify">Verification queue</a></p>
@@ -1677,7 +1720,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const body = `
       ${subs.length ? '' : '<div class="alert info">No subscriptions found. Run pending migrations from Admin &gt; Settings first, or wait for a merchant to choose a plan.</div>'}
       <form method="get" action="/admin/subscriptions" class="inline-form"><input name="q" value="${escapeHtml(q)}" placeholder="Search merchant or plan"><select name="status"><option value="">All statuses</option>${['active', 'pending_payment', 'cancelled', 'expired', 'past_due'].map((s) => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button type="submit">Filter</button></form>
-      ${shown.length ? `<table><thead><tr><th>Merchant</th><th>Plan</th><th>Cycle</th><th>Price</th><th>Status</th><th>Payment</th><th>Expires</th><th>Actions</th></tr></thead><tbody>${shown.map((s) => `<tr><td>${escapeHtml(s.business_name)}</td><td>${escapeHtml(s.plan_name)}</td><td>${escapeHtml(s.billing_cycle)}</td><td>${formatPaise(s.plan_price_paise)}</td><td>${escapeHtml(s.status)}</td><td>${escapeHtml(s.payment_status)}</td><td>${formatDate(s.expires_at)}</td><td>${s.status === 'pending_payment' ? `<form method="post" action="/admin/subscriptions/${escapeHtml(s.id)}/verify-payment" style="display:inline">${csrfField(req.csrf)}<input name="billing_reference" placeholder="Billing reference" style="width:140px" required><button type="submit">Verify payment (manual)</button></form>` : ''} ${s.status === 'active' ? `<form method="post" action="/admin/subscriptions/${escapeHtml(s.id)}/cancel" style="display:inline">${csrfField(req.csrf)}<button type="submit">Cancel</button></form>` : ''}</td></tr>`).join('')}</tbody></table>${paginationLinks(base, page, perPage, hasMore)}` : ''}
+      ${shown.length ? `<table><thead><tr><th>Merchant</th><th>Plan</th><th>Cycle</th><th>Price</th><th>Status</th><th>Payment</th><th>Expires</th><th>Actions</th></tr></thead><tbody>${shown.map((s) => `<tr><td>${escapeHtml(s.business_name)}</td><td>${escapeHtml(s.plan_name)}</td><td>${escapeHtml(s.billing_cycle)}</td><td>${formatPaise(s.plan_price_paise)}</td><td>${escapeHtml(s.status)}</td><td>${escapeHtml(s.payment_status)}</td><td>${formatDate(s.expires_at)}</td><td>${s.status === 'pending_payment' ? `<form method="post" action="/admin/subscriptions/${escapeHtml(s.id)}/verify-payment" style="display:inline">${csrfField(req.csrf)}<input name="billing_reference" placeholder="Billing reference" style="width:140px" required><button type="submit">Verify payment (manual)</button></form>` : ''} ${s.status === 'active' ? `<form method="post" action="/admin/subscriptions/${escapeHtml(s.id)}/cancel" style="display:inline" data-confirm="Cancel this subscription? The merchant falls back to the Free defaults.">${csrfField(req.csrf)}<button type="submit">Cancel</button></form>` : ''}</td></tr>`).join('')}</tbody></table>${paginationLinks(base, page, perPage, hasMore)}` : ''}
       <h2>Assign a plan to a merchant</h2>
       <p class="muted">Assigning a paid plan here requires a billing reference, because the admin is confirming that the subscription payment was received through manual billing. A free plan needs no reference. This does not create a provider payment.</p>
       <form method="post" action="/admin/subscriptions/assign">${csrfField(req.csrf)}${field('Merchant ID', 'merchant_id', 'text', '', 'required')}${field('Plan ID', 'plan_id', 'text', '', 'required')}<label>Billing cycle<select name="billing_cycle"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label>${field('Billing reference (required for paid plans)', 'billing_reference', 'text', '')}${field('Billing note', 'billing_note', 'text', '')}<p><button class="btn" type="submit">Assign plan</button></p></form>
@@ -1956,7 +1999,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
       return res.send(layout({ title: 'Checkout unavailable', body: '<div class="alert error">This merchant account is suspended. Checkout is unavailable.</div>' }));
     }
     if (['success', 'failed', 'expired', 'cancelled', 'refunded'].includes(order.status)) {
-      return res.send(layout({ title: `Order ${order.status}`, body: `<p>Order status: ${statusBadge(order.status)}</p><p>Amount: ${formatPaise(order.amount_paise)} &nbsp; Verified by: ${escapeHtml(order.verification_source || 'none')} &nbsp; UTR: ${escapeHtml(order.verification_utr || '—')}</p>${order.return_url ? `<p><a class="btn" href="${escapeHtml(order.return_url)}">Return to merchant</a></p>` : ''}` }));
+      return res.send(layout({ title: `Order ${order.status}`, variant: 'checkout', body: `<p>Order status: ${statusBadge(order.status)}</p><p>Amount: ${formatPaise(order.amount_paise)} &nbsp; Verified by: ${escapeHtml(order.verification_source || 'none')} &nbsp; UTR: ${escapeHtml(order.verification_utr || '—')}</p>${order.return_url ? `<p><a class="btn" href="${escapeHtml(order.return_url)}">Return to merchant</a></p>` : ''}` }));
     }
     // FIFO queue: only the earliest pending/processing order for this merchant
     // shows a QR code. Later orders wait and poll for their turn.
@@ -1970,7 +2013,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     } catch { /* queue check below still applies */ }
     const position = await queuePosition(pool, order).catch(() => 1);
     if (position > 1) {
-      return res.send(layout({ title: 'Waiting for your turn', body: `<div class="alert info">You are in the payment queue for this merchant.</div><p>Your queue position: <strong>${position}</strong>. Only one payment is shown a QR code at a time for the same UPI ID, so that bank alerts can be matched to the correct order. This page refreshes automatically.</p><script>setTimeout(function(){ window.location.reload(); }, 10000);</script>` }));
+      return res.send(layout({ title: 'Waiting for your turn', variant: 'checkout', body: `<div class="alert info">You are in the payment queue for this merchant.</div><p>Your queue position: <strong>${position}</strong>. Only one payment is shown a QR code at a time for the same UPI ID, so that bank alerts can be matched to the correct order. This page refreshes automatically.</p><script>setTimeout(function(){ window.location.reload(); }, 10000);</script>` }));
     }
     const upiUri = buildUpiUri({ upiId: order.upi_id_used, payeeName: order.payee_name || order.business_name, amountPaise: Number(order.amount_paise), transactionRef: order.gateway_reference });
     let qrDataUrl = '';
@@ -1979,17 +2022,19 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const body = `
       ${isSandbox ? '<div class="alert info"><strong>TEST / SANDBOX ORDER.</strong> This is not a real payment. Use the sandbox simulator below. No real money is involved and no real bank confirmation will be produced.</div>' : ''}
       <div class="checkout">
-        <p><strong>Pay to:</strong> ${escapeHtml(order.business_name)} (${escapeHtml(order.payee_name || '')})</p>
-        <p><strong>UPI ID:</strong> ${escapeHtml(order.upi_id_used)} &nbsp; <strong>Amount:</strong> ${formatPaise(order.amount_paise)} &nbsp; <strong>Order:</strong> ${escapeHtml(order.merchant_order_id)}</p>
-        <p><strong>Status:</strong> <span id="order-status">${escapeHtml(order.status)}</span> &nbsp; <span id="order-note" class="muted">Checking for verification…</span></p>
-        ${qrDataUrl ? `<img class="qr" src="${qrDataUrl}" alt="UPI QR code">` : `<p class="muted">QR code could not be generated. Use the UPI link below.</p>`}
+        <p class="payee">Pay to ${escapeHtml(order.business_name)}${order.payee_name ? ` (${escapeHtml(order.payee_name)})` : ''}</p>
+        <p class="amount">${formatPaise(order.amount_paise)}</p>
+        <p class="meta">Order ${escapeHtml(order.merchant_order_id)} · Reference ${escapeHtml(order.gateway_reference)}${order.expires_at ? ` · Expires ${formatDate(order.expires_at)}` : ''}</p>
+        <div class="status-banner"><span>Status:</span> <strong id="order-status">${escapeHtml(order.status)}</strong> <span id="order-note" class="muted">Checking for verification…</span></div>
+        <div class="qr-frame">${qrDataUrl ? `<img class="qr" src="${qrDataUrl}" alt="UPI QR code">` : `<p class="muted">QR code could not be generated. Use the UPI link below.</p>`}</div>
         <p><a class="btn" href="${escapeHtml(upiUri)}">Pay with a UPI app</a></p>
-        <p class="muted">UPI apps: GPay, PhonePe, Paytm, BHIM, CRED and other UPI apps can open the link above on a mobile device. On desktop, scan the QR code with your UPI app.</p>
-        <p><code>${escapeHtml(upiUri)}</code></p>
-        <form method="post" action="/checkout/${escapeHtml(order.gateway_reference)}/paid"><p><button class="btn secondary" type="submit">I have paid — check my payment</button></p><p class="muted">This does <strong>not</strong> mark the order successful. It moves the order to “processing” for verification (manual reconciliation, a configured provider, or an optional external observer).</p></form>
-        ${isSandbox ? `<form method="post" action="/checkout/${escapeHtml(order.gateway_reference)}/sandbox-simulate"><p><button class="btn" type="submit">Simulate successful payment (sandbox only)</button></p><p class="muted">Sandbox only. This creates a clearly-labelled TEST success with a synthetic reference. It must never be used for a live order.</p></form>` : ''}
-        <form method="post" action="/checkout/${escapeHtml(order.gateway_reference)}/cancel"><p><button type="submit">Cancel this order</button></p></form>
-        ${order.return_url ? `<p><a href="${escapeHtml(order.return_url)}">Return to merchant</a></p>` : ''}
+        <p class="muted small">On mobile, the button opens your UPI app. On desktop, scan the QR code with your UPI app.</p>
+        <details><summary>Show UPI payment link</summary><p><code>${escapeHtml(upiUri)}</code></p></details>
+        <form method="post" action="/checkout/${escapeHtml(order.gateway_reference)}/paid"><p><button class="btn secondary" type="submit">I have paid — check my payment</button></p><p class="muted small">This does <strong>not</strong> mark the order successful. It moves the order to “processing” for verification (manual reconciliation, a configured provider, or an optional external observer).</p></form>
+        ${isSandbox ? `<form method="post" action="/checkout/${escapeHtml(order.gateway_reference)}/sandbox-simulate"><p><button class="btn" type="submit">Simulate successful payment (sandbox only)</button></p><p class="muted small">Sandbox only. This creates a clearly-labelled TEST success with a synthetic reference. It must never be used for a live order.</p></form>` : ''}
+        <form method="post" action="/checkout/${escapeHtml(order.gateway_reference)}/cancel"><p><button class="btn-ghost" type="submit">Cancel this order</button></p></form>
+        ${order.return_url ? `<p><a class="btn secondary" href="${escapeHtml(order.return_url)}">Return to merchant</a></p>` : ''}
+        <div class="trust"><p><strong>Pay safely.</strong> You pay inside your own UPI app. This gateway never asks for your UPI PIN, banking password or OTP. Your payment status updates here automatically once it is verified — it is not marked successful just because you clicked “I have paid”.</p></div>
       </div>
       <script>
         (function(){
@@ -2005,7 +2050,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
         })();
       </script>
     `;
-    res.send(layout({ title: `Checkout — ${order.business_name}`, body }));
+    res.send(layout({ title: `Checkout — ${order.business_name}`, body, variant: 'checkout' }));
   });
 
   app.post('/checkout/:ref/paid', apiLimiter, async (req, res) => {
