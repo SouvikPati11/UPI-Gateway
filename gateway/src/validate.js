@@ -50,6 +50,24 @@ export function parseAmountPaise(body) {
   return null;
 }
 
+// A return URL must be a plain http(s) URL. This blocks javascript:,
+// data: and other schemes that would otherwise be linked from the
+// checkout page, while still allowing a merchant's own site (and
+// localhost test URLs) as a return destination.
+export function validateReturnUrl(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return '';
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
 export function cleanString(value, max = 255) {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, max);

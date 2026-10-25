@@ -50,8 +50,30 @@ Body (JSON):
 - `merchant_order_id` must be unique per merchant. A duplicate returns `409`
   with the existing `gateway_reference`, unless `idempotency_key` matches an
   existing order, in which case the existing order is returned (`idempotent: true`).
+- `currency` is INR only. Any other currency returns `400` and no order is
+  created; a non-INR value is never silently treated as INR.
+- `return_url`, when given, must be a valid `http://` or `https://` URL.
+  Other schemes (for example `javascript:`) return `400`.
 - Orders expire after 15 minutes if not paid and verified. Expiry is checked
   on checkout load and by the cron endpoint.
+
+## Create an order from the merchant dashboard (no API code needed)
+
+An approved merchant can also create a payment link in the dashboard:
+**Orders → New order**. The form asks for the amount in rupees, an optional
+merchant order ID (auto-generated when blank), customer details, an optional
+return URL and live/sandbox mode. The created order is the same pending
+order the API creates, with the same checkout QR code and deep link.
+Pending or suspended merchants cannot create dashboard orders either.
+
+## Record a refund (admin only)
+
+There is no public API refund endpoint. An administrator records a refund
+from an order's admin detail page, only for a `success` order. This records
+the refund in the gateway, adds an `order_refunded` event and sends a
+`REFUNDED` webhook to the merchant. It does not automatically move money
+back at the bank — the actual bank refund must be recorded separately
+before using this button.
 
 Success response (`201`):
 

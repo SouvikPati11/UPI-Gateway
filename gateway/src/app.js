@@ -9,7 +9,7 @@ import { getPool, closePool } from './db/pool.js';
 import { migrate, listMigrationFiles } from './db/migrate.js';
 import { hashPassword, verifyPassword, sha256Hex, generateApiKey, generateGatewayReference, generateWebhookSecret, encryptAtRest, decryptAtRest } from './crypto.js';
 import { createSession, getSession, deleteSession, sessionCookieOptions, csrfTokenFor, verifyCsrf, createRateLimiter } from './auth.js';
-import { escapeHtml, isEmail, isSlug, isUpiId, isUtr, parseAmountPaise, cleanString, pagination, formatPaise, formatDate, parseDbDateUtc } from './validate.js';
+import { escapeHtml, isEmail, isSlug, isUpiId, isUtr, parseAmountPaise, parseRupeesToPaise, validateReturnUrl, cleanString, pagination, formatPaise, formatDate, parseDbDateUtc } from './validate.js';
 import { layout, alert, field, csrfField, statusBadge, ordersTable, paginationLinks } from './views.js';
 import { buildUpiUri } from './upi.js';
 import { isValidTransition, assertValidTransition } from './state-machine.js';
@@ -263,7 +263,7 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
   }
 
   function merchantNav() {
-    return `<a href="/merchant/dashboard">Dashboard</a> <a href="/merchant/orders">Orders</a> <a href="/merchant/api-keys">API keys</a> <a href="/merchant/webhooks">Webhooks</a> <a href="/merchant/profile">Profile</a> <a href="/merchant/docs">Docs</a>`;
+    return `<a href="/merchant/dashboard">Dashboard</a> <a href="/merchant/orders">Orders</a> <a href="/merchant/orders/new">New order</a> <a href="/merchant/api-keys">API keys</a> <a href="/merchant/webhooks">Webhooks</a> <a href="/merchant/profile">Profile</a> <a href="/merchant/docs">Docs</a>`;
   }
   function adminNav() {
     return `<a href="/admin/dashboard">Dashboard</a> <a href="/admin/merchants">Merchants</a> <a href="/admin/orders">Orders</a> <a href="/admin/verify">Verification queue</a> <a href="/admin/webhooks">Webhooks</a> <a href="/admin/audit">Audit logs</a> <a href="/admin/settings">Settings</a>`;
@@ -551,7 +551,7 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
     const [recent] = await pool.query('SELECT * FROM orders WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 10', [m.id]);
     const [keys] = await pool.query('SELECT COUNT(*) AS n FROM merchant_api_keys WHERE merchant_id = ? AND status = ?', [m.id, 'active']);
     const body = `
-      ${m.status !== 'approved' ? `<div class="alert info">Account status: <strong>${escapeHtml(m.status)}</strong>. ${m.status === 'pending' ? 'An administrator must approve your account before API orders can be created.' : 'This account is suspended. Contact the administrator.'}</div>` : ''}
+      ${m.status !== 'approved' ? `<div class="alert info">Account status: <strong>${escapeHtml(m.status)}</strong>. ${m.status === 'pending' ? 'An administrator must approve your account before orders can be created (from the dashboard or the API).' : 'This account is suspended. Contact the administrator.'}</div>` : ''}
       <div class="grid">
         <div class="card"><h3>Total orders</h3><p class="big">${totalOrders}</p></div>
         <div class="card"><h3>Successful revenue</h3><p class="big">${formatPaise(successTotal)}</p></div>
@@ -562,7 +562,7 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
       <p><strong>UPI ID:</strong> ${escapeHtml(m.upi_id || '—')} &nbsp; <strong>Payee:</strong> ${escapeHtml(m.payee_name || '—')}</p>
       <h2>Recent orders</h2>
       ${ordersTable(recent, { detailBase: '/merchant/orders' })}
-      <p><a class="btn secondary" href="/merchant/orders">All orders</a> <a class="btn secondary" href="/merchant/api-keys">API keys</a> <a class="btn secondary" href="/merchant/docs">Integration docs</a></p>
+      <p><a class="btn" href="/merchant/orders/new">Create payment link</a> <a class="btn secondary" href="/merchant/orders">All orders</a> <a class="btn secondary" href="/merchant/api-keys">API keys</a> <a class="btn secondary" href="/merchant/docs">Integration docs</a></p>
     `;
     res.send(layout({ title: 'Merchant dashboard', body, user: { label: `${m.business_name} (${m.status})`, logout: '/merchant/logout' }, nav: merchantNav() }));
   });
@@ -574,18 +574,81 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
     const status = cleanString(req.query.status || '', 20);
     const where = ['merchant_id = ?'];
     const params = [req.merchant.id];
-    if (q) { where.push('(gateway_reference LIKE ? OR merchant_order_id LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
+    if (q) { where.push('(gateway_reference LIKE ? OR merchant_order_id LIKE ? OR verification_utr LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
     if (status) { where.push('status = ?'); params.push(status); }
     const [orders] = await pool.query(`SELECT * FROM orders WHERE ${where.join(' AND ')} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, perPage + 1, offset]);
     const hasMore = orders.length > perPage;
     const shown = hasMore ? orders.slice(0, perPage) : orders;
     const base = `/merchant/orders?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`;
     const body = `
-      <form method="get" action="/merchant/orders" class="inline-form"><input name="q" value="${escapeHtml(q)}" placeholder="Search reference or order ID"><select name="status"><option value="">All statuses</option>${['pending', 'processing', 'success', 'failed', 'expired', 'cancelled', 'refunded'].map((s) => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button type="submit">Filter</button></form>
+      <p><a class="btn" href="/merchant/orders/new">Create payment link</a></p>
+      <form method="get" action="/merchant/orders" class="inline-form"><input name="q" value="${escapeHtml(q)}" placeholder="Search reference, order ID or UTR"><select name="status"><option value="">All statuses</option>${['pending', 'processing', 'success', 'failed', 'expired', 'cancelled', 'refunded'].map((s) => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button type="submit">Filter</button></form>
       ${ordersTable(shown, { detailBase: '/merchant/orders' })}
       ${paginationLinks(base, page, perPage, hasMore)}
     `;
     res.send(layout({ title: 'Orders', body, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  // Dashboard order creation (payment links). This is the same order
+  // model as the API: same UPI ID, same amount validation, same
+  // checkout expiry, same pending state. It never marks an order
+  // successful — the customer still pays on the checkout page and the
+  // order is verified afterwards (manual, observer or provider).
+  // This route must stay before '/merchant/orders/:ref', or "new"
+  // would be treated as an order reference.
+  app.get('/merchant/orders/new', requireMerchant, async (req, res) => {
+    const m = req.merchant;
+    if (m.status !== 'approved') {
+      return res.send(layout({ title: 'Create payment link', body: `<div class="alert info">Account status: <strong>${escapeHtml(m.status)}</strong>. An administrator must approve your account before orders can be created.</div><p><a class="btn secondary" href="/merchant/dashboard">Back to dashboard</a></p>`, user: { label: m.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    const body = `<form method="post" action="/merchant/orders">${csrfField(req.csrf)}${field('Merchant order ID (leave blank to auto-generate)', 'merchant_order_id', 'text', '')}${field('Amount (₹, e.g. 499.00)', 'amount_rupees', 'text', '', 'required')}${field('Customer name', 'customer_name', 'text', '')}${field('Customer email', 'customer_email', 'email', '')}${field('Customer phone', 'customer_phone', 'text', '')}${field('Return URL after payment (https, optional)', 'return_url', 'text', '')}<label>Mode<select name="mode"><option value="live">Live</option><option value="sandbox">Sandbox (test only, no real money)</option></select></label><p class="muted">Currency is always INR. The customer pays on the checkout page with a UPI QR code and deep link. This form does not mark anything as paid.</p><p><button class="btn" type="submit">Create payment link</button></p></form>`;
+    res.send(layout({ title: 'Create payment link', body, user: { label: m.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  app.post('/merchant/orders', requireMerchant, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const merchant = req.merchant;
+    if (merchant.status !== 'approved') {
+      return res.status(403).send(layout({ title: 'Create payment link', body: `<div class="alert error">Merchant account is ${escapeHtml(merchant.status)}. Orders require an approved account.</div>`, user: { label: merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    const amountPaise = parseRupeesToPaise(String(req.body.amount_rupees || ''));
+    const customerEmail = cleanString(req.body.customer_email || '', 255);
+    const returnUrlRaw = cleanString(req.body.return_url || '', 1024);
+    const returnUrl = validateReturnUrl(returnUrlRaw);
+    if (!amountPaise) {
+      return res.status(400).send(layout({ title: 'Create payment link', body: `<div class="alert error">Enter a positive amount in rupees (e.g. 499.00).</div><p><a href="/merchant/orders/new">Back</a></p>`, user: { label: merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    if (customerEmail && !isEmail(customerEmail)) {
+      return res.status(400).send(layout({ title: 'Create payment link', body: `<div class="alert error">Customer email is not valid.</div><p><a href="/merchant/orders/new">Back</a></p>`, user: { label: merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    if (returnUrlRaw && returnUrl === null) {
+      return res.status(400).send(layout({ title: 'Create payment link', body: `<div class="alert error">Return URL must be a valid http:// or https:// URL.</div><p><a href="/merchant/orders/new">Back</a></p>`, user: { label: merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    let merchantOrderId = cleanString(req.body.merchant_order_id || '', 255);
+    if (!merchantOrderId) {
+      const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      merchantOrderId = `WEB-${day}-${Math.floor(100000 + Math.random() * 900000)}`;
+    }
+    const [dup] = await pool.query('SELECT * FROM orders WHERE merchant_id = ? AND merchant_order_id = ?', [merchant.id, merchantOrderId]);
+    if (dup[0]) {
+      return res.status(409).send(layout({ title: 'Create payment link', body: `<div class="alert error">Merchant order ID already exists for this merchant. Use a different order ID.</div><p><a href="/merchant/orders/new">Back</a></p>`, user: { label: merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    const upiId = merchant.upi_id;
+    if (!upiId) {
+      return res.status(400).send(layout({ title: 'Create payment link', body: `<div class="alert error">Merchant UPI ID is not configured. Set it on your profile first.</div><p><a href="/merchant/profile">Profile</a></p>`, user: { label: merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    const mode = req.body.mode === 'sandbox' ? 'sandbox' : 'live';
+    const [accounts] = await pool.query('SELECT * FROM receiving_accounts WHERE merchant_id = ? AND upi_id = ? AND is_active = 1', [merchant.id, upiId]);
+    const gatewayReference = generateGatewayReference();
+    const id = randomUUID();
+    await pool.query(
+      'INSERT INTO orders (id, merchant_id, merchant_order_id, gateway_reference, receiving_account_id, amount_paise, currency, status, method, upi_id_used, customer_name, customer_email, customer_phone, return_url, metadata, verification_source, mode, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE))',
+      [id, merchant.id, merchantOrderId, gatewayReference, accounts[0]?.id || null, amountPaise, 'INR', 'pending', 'upi', upiId, cleanString(req.body.customer_name || '', 255) || null, customerEmail || null, cleanString(req.body.customer_phone || '', 20) || null, returnUrl || null, JSON.stringify({}), 'none', mode, CHECKOUT_EXPIRY_MINUTES],
+    );
+    const [fresh] = await pool.query('SELECT * FROM orders WHERE id = ?', [id]);
+    await addOrderEvent(pool, { orderId: id, eventType: 'order_created', statusFrom: null, statusTo: 'pending', source: 'dashboard', actorType: 'merchant', actorId: merchant.id, details: { mode } });
+    await audit(pool, { actorType: 'merchant', actorId: merchant.id, merchantId: merchant.id, entityType: 'order', entityId: gatewayReference, action: 'order_created_dashboard', details: { mode, amount_paise: amountPaise }, ip: req.ip });
+    res.redirect(`/merchant/orders/${gatewayReference}`);
   });
 
   app.get('/merchant/orders/:ref', requireMerchant, async (req, res) => {
@@ -888,13 +951,13 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const q = cleanString(req.query.q || '', 100);
     const status = cleanString(req.query.status || '', 20);
     const where = ['1=1']; const params = [];
-    if (q) { where.push('(o.gateway_reference LIKE ? OR o.merchant_order_id LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
+    if (q) { where.push('(o.gateway_reference LIKE ? OR o.merchant_order_id LIKE ? OR o.verification_utr LIKE ? OR m.business_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`); }
     if (status) { where.push('o.status = ?'); params.push(status); }
     const [orders] = await pool.query(`SELECT o.*, m.business_name FROM orders o JOIN merchants m ON m.id = o.merchant_id WHERE ${where.join(' AND ')} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`, [...params, perPage + 1, offset]);
     const hasMore = orders.length > perPage; const shown = hasMore ? orders.slice(0, perPage) : orders;
     const base = `/admin/orders?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`;
     const body = `
-      <form method="get" action="/admin/orders" class="inline-form"><input name="q" value="${escapeHtml(q)}" placeholder="Search reference or order ID"><select name="status"><option value="">All statuses</option>${['pending', 'processing', 'success', 'failed', 'expired', 'cancelled', 'refunded'].map((s) => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button type="submit">Filter</button></form>
+      <form method="get" action="/admin/orders" class="inline-form"><input name="q" value="${escapeHtml(q)}" placeholder="Search reference, order ID, UTR or merchant"><select name="status"><option value="">All statuses</option>${['pending', 'processing', 'success', 'failed', 'expired', 'cancelled', 'refunded'].map((s) => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button type="submit">Filter</button></form>
       ${shown.length ? `<table><thead><tr><th>Reference</th><th>Merchant</th><th>Order</th><th>Amount</th><th>Status</th><th>Verified by</th><th>Created</th></tr></thead><tbody>${shown.map((o) => `<tr><td><a href="/admin/orders/${escapeHtml(o.gateway_reference)}">${escapeHtml(o.gateway_reference)}</a></td><td>${escapeHtml(o.business_name)}</td><td>${escapeHtml(o.merchant_order_id)}</td><td>${formatPaise(o.amount_paise)}</td><td>${statusBadge(o.status)}</td><td>${escapeHtml(o.verification_source || 'none')}</td><td>${formatDate(o.created_at)}</td></tr>`).join('')}</tbody></table>${paginationLinks(base, page, perPage, hasMore)}` : '<p class="muted">No orders found.</p>'}
     `;
     res.send(layout({ title: 'Orders', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
@@ -911,6 +974,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
       <p><strong>Merchant:</strong> ${escapeHtml(order.business_name)} (${escapeHtml(order.contact_email)}) &nbsp; <strong>Merchant order:</strong> ${escapeHtml(order.merchant_order_id)} &nbsp; <strong>Mode:</strong> ${escapeHtml(order.mode || 'live')}</p>
       <p><strong>Amount:</strong> ${formatPaise(order.amount_paise)} &nbsp; <strong>Status:</strong> ${statusBadge(order.status)} &nbsp; <strong>Verified by:</strong> ${escapeHtml(order.verification_source || 'none')} &nbsp; <strong>UTR:</strong> ${escapeHtml(order.verification_utr || '—')}</p>
       <p><strong>Checkout:</strong> <a href="/checkout/${escapeHtml(order.gateway_reference)}">/checkout/${escapeHtml(order.gateway_reference)}</a></p>
+      ${order.status === 'success' ? `<h2>Record a refund</h2><p class="muted">This records a refund in the gateway and sends a REFUNDED webhook to the merchant. It does not automatically move money back at the bank — record the actual bank refund separately, then record it here.</p><form method="post" action="/admin/orders/${escapeHtml(order.gateway_reference)}/refund">${csrfField(req.csrf)}${field('Refund reason (optional)', 'refund_reason', 'text', '')}<p><button class="btn" type="submit">Record refund</button></p></form>` : ''}
       <h2>Events</h2>${events.length ? `<table><thead><tr><th>Event</th><th>From</th><th>To</th><th>Source</th><th>When</th></tr></thead><tbody>${events.map((e) => `<tr><td>${escapeHtml(e.event_type)}</td><td>${escapeHtml(e.status_from || '—')}</td><td>${escapeHtml(e.status_to || '—')}</td><td>${escapeHtml(e.source || '—')}</td><td>${formatDate(e.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No events yet.</p>'}
       <h2>Webhook deliveries</h2>${deliveries.length ? `<table><thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>When</th></tr></thead><tbody>${deliveries.map((d) => `<tr><td>${escapeHtml(d.event_type)}</td><td>${escapeHtml(d.endpoint_url)}</td><td>${d.is_successful ? 'delivered' : 'pending/failed'} (${d.response_status || '—'})</td><td>${d.attempt_count}</td><td>${formatDate(d.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No webhook deliveries for this order.</p>'}
       <p><a class="btn secondary" href="/admin/verify">Verification queue</a></p>
@@ -959,6 +1023,29 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     res.redirect('/admin/verify');
   });
 
+  // Record a refund for a successful order. This only changes the
+  // gateway record and sends a REFUNDED webhook; it does not move
+  // money at the bank. The admin must record the actual bank refund
+  // separately before using this. Only success -> refunded is allowed
+  // by the state machine, so a pending or failed order cannot be
+  // refunded through this route.
+  app.post('/admin/orders/:ref/refund', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const [rows] = await pool.query('SELECT * FROM orders WHERE gateway_reference = ?', [req.params.ref]);
+    const order = rows[0];
+    if (!order) return res.status(404).send('Order not found.');
+    if (order.status !== 'success') {
+      return res.status(409).send(layout({ title: 'Order', body: alert('error', `Only a successful order can be refunded. This order is ${order.status}.`) + `<p><a href="/admin/orders/${escapeHtml(order.gateway_reference)}">Back</a></p>` }));
+    }
+    const reason = cleanString(req.body.refund_reason || '', 500);
+    try {
+      await transitionOrder(pool, order, 'refunded', { source: 'admin', actorType: 'admin', actorId: req.admin.id, details: { note: 'Refund recorded by admin', reason: reason || undefined }, config });
+    } catch (err) {
+      return res.status(409).send(layout({ title: 'Order', body: alert('error', String(err.message)) }));
+    }
+    res.redirect(`/admin/orders/${escapeHtml(order.gateway_reference)}`);
+  });
+
   app.get('/admin/webhooks', requireAdmin, async (req, res) => {
     const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
     const { page, perPage, offset } = pagination(req.query);
@@ -993,7 +1080,9 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const providerConfigured = Boolean(process.env.PROVIDER_WEBHOOK_SECRET);
     const observerConfigured = Boolean(process.env.OBSERVER_API_TOKEN);
     const body = `
-      <form method="post" action="/admin/settings">${csrfField(req.csrf)}${field('Application name', 'app_name', 'text', appName?.value || config.appName)}<label>Verification mode<select name="verification_mode"><option value="manual" ${verificationMode?.value === 'manual' || !verificationMode ? 'selected' : ''}>manual (default)</option><option value="observer" ${verificationMode?.value === 'observer' ? 'selected' : ''}>observer (optional external observers)</option><option value="provider" ${verificationMode?.value === 'provider' ? 'selected' : ''}>provider (only if a real provider is configured and tested)</option></select></label><p><button class="btn" type="submit">Save settings</button></p></form>
+      <p><strong>Effective verification mode (from the environment, this is what the running app actually uses): ${escapeHtml(config.verificationMode)}</strong></p>
+      <p class="muted">The preference saved below is a record only. It does not change the running mode. To change the running mode, set VERIFICATION_MODE in the hosting environment and restart. The saved application name is likewise a record only; pages show the YOUPI PG brand unless the APP_NAME environment variable changes it.</p>
+      <form method="post" action="/admin/settings">${csrfField(req.csrf)}${field('Application name (record only)', 'app_name', 'text', appName?.value || config.appName)}<label>Verification preference (record only)<select name="verification_mode"><option value="manual" ${verificationMode?.value === 'manual' || !verificationMode ? 'selected' : ''}>manual (default)</option><option value="observer" ${verificationMode?.value === 'observer' ? 'selected' : ''}>observer (optional external observers)</option><option value="provider" ${verificationMode?.value === 'provider' ? 'selected' : ''}>provider (only if a real provider is configured and tested)</option></select></label><p><button class="btn" type="submit">Save settings</button></p></form>
       <h2>Verification configuration status</h2>
       <ul>
         <li>Provider webhook configured: <strong>${providerConfigured ? 'Yes (secret is set in the environment; its value is never shown here)' : 'No — provider mode must not be enabled until a real provider is configured and tested'}</strong></li>
@@ -1009,6 +1098,16 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
     const appName = cleanString(req.body.app_name, 255) || config.appName;
     const mode = ['manual', 'observer', 'provider'].includes(req.body.verification_mode) ? req.body.verification_mode : 'manual';
+    // Do not let the saved preference pretend a provider or observer
+    // exists. Provider mode needs a real, tested provider webhook
+    // secret; observer mode needs an observer token. Without those,
+    // the saved preference would be misleading, so refuse to save it.
+    if (mode === 'provider' && !process.env.PROVIDER_WEBHOOK_SECRET) {
+      return res.status(400).send(layout({ title: 'Application settings', body: alert('error', 'Provider mode cannot be saved: PROVIDER_WEBHOOK_SECRET is not set in the environment. Configure and test a real provider first.') + '<p><a href="/admin/settings">Back</a></p>' }));
+    }
+    if (mode === 'observer' && !process.env.OBSERVER_API_TOKEN) {
+      return res.status(400).send(layout({ title: 'Application settings', body: alert('error', 'Observer mode cannot be saved: OBSERVER_API_TOKEN is not set in the environment. Configure an observer first.') + '<p><a href="/admin/settings">Back</a></p>' }));
+    }
     await setSetting(pool, 'app_name', { value: appName });
     await setSetting(pool, 'verification_mode', { value: mode });
     await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: null, entityType: 'app', entityId: 'settings', action: 'settings_updated', details: { verification_mode: mode }, ip: req.ip });
@@ -1046,6 +1145,22 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const mode = req.body.mode === 'sandbox' ? 'sandbox' : 'live';
     const idempotencyKey = cleanString(req.body.idempotency_key || '', 255) || null;
     if (!merchantOrderId || !amountPaise) return res.status(400).json({ error: 'merchant_order_id and a positive amount (amount_paise or amount) are required.' });
+    // Currency is INR only. Previously a non-INR currency was silently
+    // ignored and the order was still created as INR, which would
+    // mislead the caller. Reject it explicitly instead.
+    if (req.body.currency !== undefined && req.body.currency !== null && req.body.currency !== '' && String(req.body.currency).toUpperCase() !== 'INR') {
+      return res.status(400).json({ error: 'Only INR is supported. Set currency to INR or omit it.' });
+    }
+    // Return URLs are linked from the checkout page, so only plain
+    // http(s) URLs are accepted. javascript: and data: URLs are rejected.
+    if (req.body.return_url !== undefined && req.body.return_url !== null && req.body.return_url !== '' && typeof req.body.return_url !== 'string') {
+      return res.status(400).json({ error: 'return_url must be a valid http:// or https:// URL.' });
+    }
+    const returnUrlRaw = cleanString(req.body.return_url || '', 1024);
+    const returnUrl = validateReturnUrl(returnUrlRaw);
+    if (returnUrlRaw && returnUrl === null) {
+      return res.status(400).json({ error: 'return_url must be a valid http:// or https:// URL.' });
+    }
     if (idempotencyKey) {
       const [existing] = await pool.query('SELECT * FROM orders WHERE merchant_id = ? AND idempotency_key = ?', [merchant.id, idempotencyKey]);
       if (existing[0]) return res.json({ order: publicOrder(existing[0], merchant, config), idempotent: true });
@@ -1060,7 +1175,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     try {
       await pool.query(
         'INSERT INTO orders (id, merchant_id, merchant_order_id, gateway_reference, receiving_account_id, amount_paise, currency, status, method, upi_id_used, customer_name, customer_email, customer_phone, return_url, metadata, verification_source, mode, expires_at, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE), ?)',
-        [id, merchant.id, merchantOrderId, gatewayReference, accounts[0]?.id || null, amountPaise, 'INR', 'pending', 'upi', upiId, cleanString(req.body.customer_name || '', 255) || null, cleanString(req.body.customer_email || '', 255) || null, cleanString(req.body.customer_phone || '', 20) || null, cleanString(req.body.return_url || '', 1024) || null, JSON.stringify(req.body.metadata || {}), 'none', mode, CHECKOUT_EXPIRY_MINUTES, idempotencyKey],
+        [id, merchant.id, merchantOrderId, gatewayReference, accounts[0]?.id || null, amountPaise, 'INR', 'pending', 'upi', upiId, cleanString(req.body.customer_name || '', 255) || null, cleanString(req.body.customer_email || '', 255) || null, cleanString(req.body.customer_phone || '', 20) || null, returnUrl || null, JSON.stringify(req.body.metadata || {}), 'none', mode, CHECKOUT_EXPIRY_MINUTES, idempotencyKey],
       );
     } catch (err) {
       return res.status(409).json({ error: `Order creation failed: ${String(err?.message || err)}` });
