@@ -825,6 +825,7 @@ Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
         <div class="card"><h3>Processing</h3><p class="big">${byStatus.processing || 0}</p></div>
         <div class="card"><h3>Active API keys</h3><p class="big">${keys[0]?.n || 0}</p></div>
       </div>
+      <div class="card"><h3>Orders by status</h3>${totalOrders ? `<div class="status-bars">${['pending', 'processing', 'success', 'failed', 'expired', 'cancelled', 'refunded'].filter((st) => (byStatus[st] || 0) > 0).map((st) => { const n = byStatus[st] || 0; const max = Math.max(1, ...Object.values(byStatus)); return `<div class="status-bar-row">${statusBadge(st)}<div class="status-bar-track"><i class="status-bar-fill" style="width:${Math.round((n / max) * 100)}%"></i></div><span class="status-bar-count">${n}</span></div>`; }).join('')}</div>` : '<p class="muted">No orders yet. Create your first payment link to see status breakdowns here.</p>'}</div>
       <p><strong>UPI ID:</strong> ${escapeHtml(m.upi_id || '—')} &nbsp; <strong>Payee:</strong> ${escapeHtml(m.payee_name || '—')}</p>
       <h2>Recent orders</h2>
       ${ordersTable(recent, { detailBase: '/merchant/orders' })}
@@ -1432,6 +1433,7 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
         <div class="card"><h3>Verification queue</h3><p class="big">${queue[0]?.n || 0}</p><p>Orders in processing awaiting verification.</p></div>
         <div class="card"><h3>Subscriptions</h3>${subStats ? `<p class="big">${Object.values(subBy).reduce((a, b) => a + b, 0)}</p><p>Active: ${subBy.active || 0} · Pending payment: ${subBy.pending_payment || 0} · Cancelled: ${subBy.cancelled || 0}</p>` : '<p class="muted">Subscription data is unavailable until migrations are run (Admin &gt; Settings).</p>'}</div>
       </div>
+      <div class="card"><h3>Orders by status</h3>${oTotal ? `<div class="status-bars">${['pending', 'processing', 'success', 'failed', 'expired', 'cancelled', 'refunded'].filter((st) => (oBy[st] || 0) > 0).map((st) => { const n = oBy[st] || 0; const max = Math.max(1, ...Object.values(oBy)); return `<div class="status-bar-row">${statusBadge(st)}<div class="status-bar-track"><i class="status-bar-fill" style="width:${Math.round((n / max) * 100)}%"></i></div><span class="status-bar-count">${n}</span></div>`; }).join('')}</div>` : '<p class="muted">No orders in this range.</p>'}</div>
       <h2>Pending merchants</h2>
       ${pendingMerchants.length ? `<table><thead><tr><th>Business</th><th>Email</th><th>UPI</th><th>Created</th></tr></thead><tbody>${pendingMerchants.map((m) => `<tr><td><a href="/admin/merchants/${escapeHtml(m.id)}">${escapeHtml(m.business_name)}</a></td><td>${escapeHtml(m.contact_email)}</td><td>${escapeHtml(m.upi_id || '—')}</td><td>${formatDate(m.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No pending merchants.</p>'}
       <h2>Recent orders</h2>

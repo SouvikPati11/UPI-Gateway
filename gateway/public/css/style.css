@@ -221,8 +221,16 @@ dialog::backdrop{background:rgba(11,18,32,.5)}
 .shell-menu{display:none}
 .shell-menu summary{list-style:none;cursor:pointer;padding:.45rem .8rem;border:1px solid var(--border);border-radius:10px;background:#fff;font-weight:700}
 .shell-menu summary::-webkit-details-marker{display:none}
-.shell-menu nav{position:absolute;left:1rem;right:1rem;top:100%;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:.75rem;display:grid;gap:.25rem}
-.shell-menu nav a{padding:.55rem .8rem;border-radius:8px;font-weight:600;color:var(--text)}
+/* Mobile drawer: fixed to the viewport (NOT to the tiny Menu button).
+   The old absolute panel was sized against the ~85px-wide <details>
+   element, which produced the ~53px narrow strip that overlapped content. */
+@media(max-width:1024px){
+  .shell-menu{display:block}
+  .shell-menu nav{position:fixed;top:0;right:0;bottom:0;width:min(88vw,320px);z-index:100;background:#fff;border-left:1px solid var(--border);box-shadow:-12px 0 40px rgba(15,23,42,.25);padding:1rem 1rem 2rem;overflow-y:auto;display:grid;gap:.25rem;align-content:start}
+  .shell-menu nav a{padding:.7rem .9rem;border-radius:10px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
+  .shell-menu nav a:hover{background:var(--surface-2);text-decoration:none}
+  .drawer-close{justify-self:end;padding:.45rem .8rem;border-radius:10px;border:1px solid var(--border);background:#fff;font-weight:700;cursor:pointer;margin-bottom:.5rem}
+}
 .shell-wrap{max-width:1080px}
 .shell-footer{margin-top:auto;border-top:1px solid var(--border);padding:1rem 1.5rem;color:var(--muted);font-size:.85rem;background:#fff}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1rem;margin:1rem 0}
@@ -260,7 +268,7 @@ dialog::backdrop{background:rgba(11,18,32,.5)}
 @media(max-width:1024px){
   .sidebar{display:none}
   .topbar .brand{display:flex}
-  .shell-menu{display:block;position:relative}
+  .shell-menu{display:block}
   .topbar-account .account-label{display:none}
   .hero-inner{grid-template-columns:1fr}
   .feature-grid,.security-grid{grid-template-columns:repeat(2,1fr)}
@@ -358,4 +366,16 @@ dialog::backdrop{background:rgba(11,18,32,.5)}
   .wrap>table tr,.card>table tr{border-bottom:1px solid var(--border);padding:.5rem .9rem}
   .wrap>table td,.card>table td{border:0;padding:.3rem 0;display:flex;justify-content:space-between;gap:1rem;text-align:right}
   .wrap>table td::before,.card>table td::before{content:attr(data-label);font-weight:700;color:var(--muted);text-align:left}
+}
+
+/* ---------- Real-data status bars (dashboards) ---------- */
+.status-bars{display:grid;gap:.55rem;margin:1rem 0}
+.status-bar-row{display:flex;align-items:center;gap:.75rem;font-size:.9rem}
+.status-bar-row .badge{flex:none}
+.status-bar-track{flex:1;height:10px;background:var(--surface-2);border-radius:999px;overflow:hidden}
+.status-bar-fill{display:block;height:100%;background:linear-gradient(90deg,var(--primary),var(--accent));border-radius:999px}
+.status-bar-count{font-weight:700;min-width:3ch;text-align:right}
+@media(max-width:720px){
+  .auth-card{padding:1.25rem}
+  .stat-grid .big{font-size:1.45rem}
 }
