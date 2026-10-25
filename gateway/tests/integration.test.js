@@ -95,7 +95,7 @@ describe('Live integration (disposable MySQL only)', { skip: !enabled }, () => {
     };
     const { migrate } = await import('../src/db/migrate.js');
     const results = await migrate({ config, apply: true, pool });
-    assert.deepEqual(results.map((r) => r.status), ['applied', 'applied', 'applied']);
+    assert.deepEqual(results.map((r) => r.status), ['applied', 'applied', 'applied', 'applied']);
 
     webhookEvents = [];
     webhookServer = http.createServer((req, res) => {

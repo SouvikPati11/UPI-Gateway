@@ -82,7 +82,7 @@ describe('Merchant dashboard orders, admin refund, API currency/return validatio
     };
     const { migrate } = await import('../src/db/migrate.js');
     const results = await migrate({ config, apply: true, pool });
-    assert.deepEqual(results.map((r) => r.status), ['applied', 'applied', 'applied']);
+    assert.deepEqual(results.map((r) => r.status), ['applied', 'applied', 'applied', 'applied']);
     const { createApp } = await import('../src/app.js');
     const app = createApp({ config, pool });
     await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });

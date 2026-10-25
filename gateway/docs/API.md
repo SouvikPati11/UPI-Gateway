@@ -288,3 +288,52 @@ If `CRON_SECRET` is not set, cron endpoints return `503` (disabled).
    `verification_source: "sandbox"`.
 5. Create a live order and confirm the sandbox button is blocked (`403`).
 6. Confirm a live order is not marked successful by "I have paid" alone.
+
+## Subscription plans and order limits (migration 004)
+
+The merchant dashboard and the API both enforce the merchant's current
+subscription plan on the server, before an order is created:
+
+- A merchant with no subscription record uses the Free plan defaults
+  (100 orders per month, 100 API orders per month) until a plan is chosen.
+- If the merchant's monthly transaction limit (or, for API orders, the API
+  limit) is reached, order creation returns `403` with a limit message and
+  no order is created.
+- A subscription that expired more than 7 days ago (past its grace period)
+  blocks order creation with `403`. Inside the grace period, orders are
+  still allowed.
+- A paid plan change requested by a merchant creates a `pending_payment`
+  subscription. The previous plan stays active until an administrator
+  verifies the subscription payment through manual billing (Admin >
+  Subscriptions > Verify payment, with a billing reference). A subscription
+  record alone is never proof of payment, and there is no subscription
+  payment provider configured by default — manual billing only.
+- Admins manage plans at Admin > Plans (create, edit, activate/deactivate)
+  and assign plans at Admin > Subscriptions (a billing reference is
+  required for paid plans).
+
+## New dashboard and admin pages (migration 004)
+
+Public: `/` (landing), `/features`, `/pricing`, `/docs`, `/faq`,
+`/support`, `/contact`, `/legal`, `/terms`, `/privacy`, `/refund-policy`.
+
+Merchant: `/merchant/subscription` (current plan, usage, billing history),
+`/merchant/subscription/change`, `/merchant/security` (password change,
+email verification status), `/merchant/activity` (own audit history),
+`/merchant/forgot-password` and `/merchant/reset-password` (single-use
+1-hour tokens; the forgot-password response is generic and never reveals
+whether an account exists or any token).
+
+Admin: `/admin/plans`, `/admin/subscriptions`, `/admin/usage` (per-merchant
+monthly orders and API orders against plan limits), `/admin/support`
+(messages from `/contact`, with replies), `/admin/migrations` (POST, runs
+pending forward-only migrations on an already-installed database — use
+this after redeploying a release that adds a migration, because `/install`
+is locked once installed), `/admin/merchants/:id/verify-email` (admin
+confirmation fallback when no email service is configured).
+
+Email delivery: password-reset and email-verification emails are sent only
+when `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM` are set in the
+environment (see `.env.example`). When unset, the app says so clearly and
+never claims an email was sent; admins can mark a merchant email verified
+after confirming identity through support.

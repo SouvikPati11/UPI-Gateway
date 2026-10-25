@@ -15,6 +15,9 @@ import { buildUpiUri } from './upi.js';
 import { isValidTransition, assertValidTransition } from './state-machine.js';
 import { validateVerificationEvent } from './verification/adapter.js';
 import { deliverWebhook, retryDueDeliveries, audit, addOrderEvent, isSafeWebhookUrl } from './webhooks.js';
+import { getActivePlans, getPlanById, getPlanBySlug, getCurrentSubscription, getUsage, checkOrderAllowed, createSubscription, parsePlanFeatures, subscriptionPeriodDates, FALLBACK_PLANS } from './subscriptions.js';
+import { createPasswordReset, findValidPasswordReset, markPasswordResetUsed, createEmailVerification, findValidEmailVerification, isEmailVerified } from './account-security.js';
+import { mailerConfigured, sendMail } from './mailer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const gatewayRoot = path.resolve(__dirname, '..');
@@ -263,10 +266,21 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
   }
 
   function merchantNav() {
-    return `<a href="/merchant/dashboard">Dashboard</a> <a href="/merchant/orders">Orders</a> <a href="/merchant/orders/new">New order</a> <a href="/merchant/api-keys">API keys</a> <a href="/merchant/webhooks">Webhooks</a> <a href="/merchant/profile">Profile</a> <a href="/merchant/docs">Docs</a>`;
+    return `<a href="/merchant/dashboard">Dashboard</a> <a href="/merchant/orders">Orders</a> <a href="/merchant/orders/new">New order</a> <a href="/merchant/api-keys">API keys</a> <a href="/merchant/webhooks">Webhooks</a> <a href="/merchant/subscription">Subscription</a> <a href="/merchant/profile">Profile</a> <a href="/merchant/security">Security</a> <a href="/merchant/activity">Activity</a> <a href="/merchant/docs">Docs</a>`;
   }
   function adminNav() {
-    return `<a href="/admin/dashboard">Dashboard</a> <a href="/admin/merchants">Merchants</a> <a href="/admin/orders">Orders</a> <a href="/admin/verify">Verification queue</a> <a href="/admin/webhooks">Webhooks</a> <a href="/admin/audit">Audit logs</a> <a href="/admin/settings">Settings</a>`;
+    return `<a href="/admin/dashboard">Dashboard</a> <a href="/admin/merchants">Merchants</a> <a href="/admin/orders">Orders</a> <a href="/admin/verify">Verification queue</a> <a href="/admin/plans">Plans</a> <a href="/admin/subscriptions">Subscriptions</a> <a href="/admin/usage">Usage</a> <a href="/admin/support">Support</a> <a href="/admin/webhooks">Webhooks</a> <a href="/admin/audit">Audit logs</a> <a href="/admin/settings">Settings</a>`;
+  }
+  function publicNav() {
+    return `<a href="/">Home</a> <a href="/features">Features</a> <a href="/pricing">Pricing</a> <a href="/docs">Docs</a> <a href="/faq">FAQ</a> <a href="/support">Support</a> <a href="/contact">Contact</a>`;
+  }
+  function planPriceText(plan, cycle = 'monthly') {
+    const paise = cycle === 'annual' ? Number(plan.price_annual_paise || 0) : Number(plan.price_monthly_paise || 0);
+    return paise === 0 ? 'Free' : `${formatPaise(paise)} / ${cycle === 'annual' ? 'year' : 'month'}`;
+  }
+  function planCard(plan, cycle = 'monthly') {
+    const features = parsePlanFeatures(plan);
+    return `<div class="card"><h3>${escapeHtml(plan.name)}</h3><p class="big">${escapeHtml(planPriceText(plan, cycle))}</p><p>${escapeHtml(plan.description || '')}</p><p class="muted">Transactions / month: ${plan.transaction_limit === null || plan.transaction_limit === undefined ? 'Unlimited' : escapeHtml(String(plan.transaction_limit))} · API calls / month: ${plan.api_limit === null || plan.api_limit === undefined ? 'Unlimited' : escapeHtml(String(plan.api_limit))}</p>${features.length ? `<ul>${features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>` : ''}<p><a class="btn" href="/merchant/register">Start with ${escapeHtml(plan.name)}</a></p></div>`;
   }
 
   // ---------- Public ----------
@@ -290,18 +304,169 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
     const pool = poolOverride || (config.db.configured ? getPool(config) : null);
     let installed = false;
     if (pool) installed = await isInstalled(pool);
+    let plans = [];
+    if (pool) {
+      try { plans = await getActivePlans(pool); } catch { plans = []; }
+    }
+    if (!plans.length) plans = FALLBACK_PLANS;
     const body = `
-      <p class="lead">A single-application, multi-merchant UPI payment gateway for Hostinger / cPanel hosting. One Node.js app, one MySQL database, no Docker, Redis, PostgreSQL or headless Chrome required.</p>
+      <div class="hero"><h2>Accept UPI payments for your business, without a complex setup.</h2><p class="lead">YOUPI PG is a multi-merchant UPI payment gateway: create payment links, share a QR checkout, track every order, and reconcile payments against your bank record. One Node.js app, one MySQL database, no Docker, Redis or PostgreSQL required.</p><p><a class="btn" href="/merchant/register">Register as a merchant</a> <a class="btn secondary" href="/merchant/login">Merchant login</a> <a class="btn secondary" href="/pricing">See pricing</a></p></div>
       ${installed ? '' : '<div class="alert info">This application is not installed yet. <a href="/install">Open the installation wizard</a> to connect MySQL, run migrations and create the first administrator.</div>'}
+      <h2>What you get</h2>
       <div class="grid">
-        <div class="card"><h3>Merchants</h3><p>Register, configure your UPI ID, create API keys, view orders and webhook deliveries.</p><p><a class="btn" href="/merchant/register">Register as a merchant</a> <a class="btn secondary" href="/merchant/login">Merchant login</a></p></div>
-        <div class="card"><h3>Administrators</h3><p>Approve merchants, reconcile payments, monitor webhooks and audit logs.</p><p><a class="btn" href="/admin/login">Admin login</a></p></div>
-        <div class="card"><h3>Checkout &amp; SDK</h3><p>Dynamic UPI QR codes, UPI app deep links, a JavaScript SDK and signed webhooks.</p><p><a class="btn secondary" href="/merchant/docs">Integration docs</a> <a class="btn secondary" href="/public/sdk.js">Download SDK</a></p></div>
+        <div class="card"><h3>UPI checkout</h3><p>Dynamic QR codes and UPI app deep links with the exact amount and gateway reference for every order. Checkout expires after 15 minutes.</p></div>
+        <div class="card"><h3>Merchant dashboard</h3><p>Orders, payment links, API keys, webhooks, subscriptions and activity — all scoped to your own account, never to another merchant's data.</p></div>
+        <div class="card"><h3>Safe verification</h3><p>A QR scan, a return from a UPI app, a screenshot or an “I have paid” click never marks an order successful. Orders succeed only after manual reconciliation or a configured, tested provider/observer.</p></div>
+        <div class="card"><h3>API and webhooks</h3><p>Secret-key API, signed webhooks with retries, an SDK for checkout links, and sandbox mode that is clearly separated from real payments.</p></div>
       </div>
+      <h2>Pricing</h2>
+      <p class="muted">Plans below are the currently active plans in this installation. An administrator can change them in Admin &gt; Plans. Subscription billing is separate from the payments your customers make to you.</p>
+      <div class="grid">${plans.map((p) => planCard(p)).join('')}</div>
+      <p><a class="btn secondary" href="/pricing">Full pricing</a> <a class="btn secondary" href="/features">All features</a> <a class="btn secondary" href="/docs">Developer docs</a> <a class="btn secondary" href="/faq">FAQ</a></p>
       <h2>How payment verification works here</h2>
       <p>Scanning a QR code, opening a UPI app, returning to the site, uploading a screenshot, or clicking “I have paid” <strong>never</strong> marks an order successful. An order stays pending until it is verified by manual reconciliation, a configured provider, or an optional external observer — and the verification source is shown on every order. Sandbox orders are clearly labelled TEST and use synthetic references, never real bank confirmations.</p>
+      <p><a href="/merchant/register">Register as a merchant</a> · <a href="/merchant/login">Merchant login</a> · <a href="/admin/login">Admin login</a> · <a href="/privacy">Privacy</a> · <a href="/refund-policy">Refund policy</a> · <a href="/terms">Terms</a></p>
     `;
-    res.send(layout({ title: 'YOUPI PG — Multi-Merchant UPI Gateway', body, nav: '' }));
+    res.send(layout({ title: 'YOUPI PG — Multi-Merchant UPI Gateway', body, nav: publicNav() }));
+  });
+
+  // ---------- Public pages (real content, no fake metrics) ----------
+  app.get('/features', async (req, res) => {
+    const body = `
+      <p class="lead">Everything a small or growing business needs to accept UPI payments, in one installation.</p>
+      <div class="grid">
+        <div class="card"><h3>Payment links and QR checkout</h3><p>Create an order from the dashboard or the API, share its checkout link, and let customers pay by scanning a QR code or opening their UPI app. Amount, currency (INR only) and gateway reference are fixed per order.</p></div>
+        <div class="card"><h3>Transaction history and search</h3><p>Search by gateway reference, merchant order ID or UTR, filter by status, and open any order to see its full event history and webhook deliveries.</p></div>
+        <div class="card"><h3>Manual reconciliation</h3><p>An admin compares each pending order against the merchant's official bank record before marking it successful, with duplicate-UTR protection and an audit trail.</p></div>
+        <div class="card"><h3>API, SDK and webhooks</h3><p>Secret-key REST API, a checkout SDK that never needs a secret in the browser, and HMAC-signed webhooks with delivery history and retries.</p></div>
+        <div class="card"><h3>Subscriptions</h3><p>Configurable plans with transaction and API limits, usage tracking, upgrade/downgrade requests, and admin-verified manual billing for paid plans.</p></div>
+        <div class="card"><h3>Security</h3><p>Hashed passwords, hashed API secrets, encrypted webhook secrets, CSRF protection on account forms, rate limiting, merchant isolation on every query, and audit logs for sensitive actions.</p></div>
+      </div>
+      <p><a class="btn" href="/merchant/register">Register as a merchant</a> <a class="btn secondary" href="/pricing">See pricing</a></p>
+    `;
+    res.send(layout({ title: 'Features', body, nav: publicNav() }));
+  });
+
+  app.get('/pricing', async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    let plans = [];
+    try { plans = await getActivePlans(pool); } catch { plans = []; }
+    if (!plans.length) plans = FALLBACK_PLANS;
+    const cycle = req.query.cycle === 'annual' ? 'annual' : 'monthly';
+    const body = `
+      <p class="lead">Choose a plan. Prices are in INR, per merchant account. An administrator can change plan names, prices, limits and features in Admin &gt; Plans.</p>
+      <p><a class="btn secondary" href="/pricing?cycle=monthly">Monthly</a> <a class="btn secondary" href="/pricing?cycle=annual">Annual</a></p>
+      <div class="grid">${plans.map((p) => planCard(p, cycle)).join('')}</div>
+      <h2>How subscription billing works</h2>
+      <p>Subscription billing is separate from the payments your customers make to you. A subscription record alone is not proof that the subscription fee was paid. For a paid plan, a merchant requests an upgrade and an administrator verifies the subscription payment through manual billing before the plan becomes active. Free plans need no payment. If no payment provider is configured for subscriptions, only manual billing is available — that limitation is stated here deliberately, not hidden.</p>
+      <p>Expired subscriptions get a 7-day grace period (where a grace date is set). After grace ends, new order creation is blocked until the subscription is renewed or changed. Existing order history and status checks remain available.</p>
+    `;
+    res.send(layout({ title: 'Pricing', body, nav: publicNav() }));
+  });
+
+  app.get('/docs', async (req, res) => {
+    const body = `
+      <p class="lead">Developer documentation — the same endpoints the dashboard uses, with real examples.</p>
+      <h2>Authentication</h2>
+      <p>Create a secret API key in the merchant dashboard under API keys. Send it as <code>Authorization: Bearer sk_...</code> or <code>X-Api-Key: sk_...</code>. Secret keys work only for approved merchants, only for their own account, and are shown exactly once at creation. Never put a secret key in browser JavaScript or HTML.</p>
+      <h2>Create an order</h2>
+      <pre>POST /api/v1/orders
+Authorization: Bearer sk_YOUR_SECRET_KEY
+Content-Type: application/json
+
+{
+  "merchant_order_id": "ORDER-1001",
+  "amount_paise": 49900,
+  "currency": "INR",
+  "mode": "live",
+  "return_url": "https://yourstore.example/order-done",
+  "idempotency_key": "optional-unique-key"
+}</pre>
+      <p>Success is <code>201</code> with <code>order.checkout_url</code>, <code>gateway_reference</code>, <code>amount_paise</code> and <code>status: "pending"</code>. A duplicate <code>merchant_order_id</code> returns <code>409</code>; a matching <code>idempotency_key</code> returns the existing order. A non-INR currency returns <code>400</code> and no order is created. A non-http(s) <code>return_url</code> returns <code>400</code>.</p>
+      <h2>Get an order</h2>
+      <pre>GET /api/v1/orders/:gateway_reference
+Authorization: Bearer sk_YOUR_SECRET_KEY</pre>
+      <p>Returns the order only if it belongs to the authenticated merchant, otherwise <code>404</code>. Public status polling at <code>GET /api/public/orders/:gateway_reference/status</code> is used by the checkout page to refresh its status display.</p>
+      <h2>Checkout SDK</h2>
+      <p>Your server creates the order, then passes its <code>checkout_url</code> to the SDK: <code>YoupiCheckout.open(checkoutUrl)</code>, or add <code>data-youpi-checkout-url="..."</code> to a button. The SDK file is at <code>/public/sdk.js</code>. Full details, webhook signing and retry rules are in <code>docs/API.md</code> in the repository.</p>
+      <h2>Webhooks</h2>
+      <p>Set an https webhook URL in the merchant dashboard. Every terminal order event (SUCCESS, FAILED, EXPIRED, CANCELLED, REFUNDED) is delivered as JSON with <code>X-Gateway-Signature: sha256=&lt;hmac&gt;</code>, <code>X-Gateway-Delivery-Id</code> and <code>X-Gateway-Timestamp</code>. Verify the HMAC over the raw body with your webhook secret. Deliveries are retried with bounded backoff and can be retried manually from the dashboard. A webhook delivery is not proof that a payment succeeded — it only reports the gateway's recorded status.</p>
+      <h2>Sandbox</h2>
+      <p>Create an order with <code>mode: "sandbox"</code>, or use the dashboard's sandbox mode. Sandbox checkouts are labelled TEST and their simulator creates only a synthetic success. Sandbox orders are never marked as real payments in the manual verification queue.</p>
+    `;
+    res.send(layout({ title: 'Developer docs', body, nav: publicNav() }));
+  });
+
+  app.get('/faq', async (req, res) => {
+    const body = `
+      <h2>Is a QR scan proof of payment?</h2><p>No. A scan, a return from a UPI app, a screenshot, or an “I have paid” click only moves an order to processing. It becomes successful only after manual reconciliation against a bank record, or a configured and tested provider/observer confirmation.</p>
+      <h2>Do you automatically verify payments with a bank?</h2><p>Not by default. No real bank/provider integration is included in this codebase. If you need automatic verification, you must configure a real provider, its credentials and its webhook secret, and test it. Until then, manual verification is the safe, supported workflow.</p>
+      <h2>What is sandbox mode?</h2><p>A test mode for checkout, clearly labelled TEST. It never produces a real bank confirmation and its orders are never treated as real payments.</p>
+      <h2>What does a refund mean here?</h2><p>A recorded refund in the gateway, with a REFUNDED webhook. It does not automatically move money back at the bank. Record the actual bank refund separately, then record it here.</p>
+      <h2>How does subscription billing work?</h2><p>Separately from customer payments. Paid plan upgrades are requested by the merchant and verified by an admin through manual billing before they become active. Free plans need no payment.</p>
+      <h2>Can one merchant see another merchant's data?</h2><p>No. Every merchant query and API check is scoped to that merchant's own account, and API keys, webhooks, subscriptions and orders are never shared across merchants.</p>
+      <p><a href="/contact">Still stuck? Contact support</a></p>
+    `;
+    res.send(layout({ title: 'FAQ', body, nav: publicNav() }));
+  });
+
+  app.get('/contact', async (req, res) => {
+    const body = `<p class="lead">Send a support message. It is stored in the admin support queue; it is not sent as an email unless an email service is configured for this installation.</p><form method="post" action="/contact">${field('Your name', 'name', 'text', '', 'required')}${field('Email', 'email', 'email', '', 'required')}${field('Subject', 'subject', 'text', '', 'required')}<label>Message<textarea name="message" rows="6" required style="width:100%;max-width:480px;padding:.5rem;border:1px solid #cbd5e1;border-radius:8px"></textarea></label><p><button class="btn" type="submit">Send message</button></p></form>`;
+    res.send(layout({ title: 'Contact', body, nav: publicNav() }));
+  });
+
+  app.post('/contact', apiLimiter, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const name = cleanString(req.body.name || '', 255);
+    const email = cleanString(req.body.email || '', 255);
+    const subject = cleanString(req.body.subject || '', 255);
+    const message = cleanString(req.body.message || '', 5000);
+    if (!name || !isEmail(email) || !subject || !message) {
+      return res.status(400).send(layout({ title: 'Contact', body: `<div class="alert error">Please fill in your name, a valid email, a subject and a message.</div><p><a href="/contact">Back</a></p>`, nav: publicNav() }));
+    }
+    let merchantId = null;
+    try {
+      const [rows] = await pool.query('SELECT id FROM merchants WHERE contact_email = ?', [email]);
+      if (rows[0]) merchantId = rows[0].id;
+    } catch { /* support table may not exist yet; fall through to the error below */ }
+    try {
+      await pool.query('INSERT INTO support_messages (id, merchant_id, name, email, subject, message) VALUES (?, ?, ?, ?, ?, ?)', [randomUUID(), merchantId, name, email, subject, message]);
+    } catch {
+      return res.status(503).send(layout({ title: 'Contact', body: `<div class="alert error">Support messages are not available yet on this installation. Please run pending migrations from Admin &gt; Settings, then try again.</div>`, nav: publicNav() }));
+    }
+    res.send(layout({ title: 'Contact', body: `<div class="alert success">Thank you. Your message has been saved to the support queue. An administrator will review it from Admin &gt; Support.</div><p><a class="btn secondary" href="/">Back to home</a></p>`, nav: publicNav() }));
+  });
+
+  app.get('/support', async (req, res) => {
+    const body = `
+      <p class="lead">Help for merchants and developers.</p>
+      <div class="grid">
+        <div class="card"><h3>Developer docs</h3><p>API authentication, order creation, webhooks and sandbox testing.</p><p><a class="btn secondary" href="/docs">Read the docs</a></p></div>
+        <div class="card"><h3>FAQ</h3><p>Verification, sandbox, refunds, subscriptions and merchant isolation.</p><p><a class="btn secondary" href="/faq">Read the FAQ</a></p></div>
+        <div class="card"><h3>Contact support</h3><p>Send a message that an administrator reviews in Admin &gt; Support.</p><p><a class="btn secondary" href="/contact">Contact support</a></p></div>
+      </div>
+      <p class="muted">No live status page is shown here, because no external status service is configured for this installation. Do not treat a rendered page as proof that a payment or a subscription fee was verified.</p>
+    `;
+    res.send(layout({ title: 'Support', body, nav: publicNav() }));
+  });
+
+  app.get('/legal', async (req, res) => {
+    res.send(layout({ title: 'Legal', body: `<p class="lead">Legal information for this YOUPI PG installation.</p><p><a href="/terms">Terms of service</a></p><p><a href="/privacy">Privacy policy</a></p><p><a href="/refund-policy">Refund policy</a></p><p class="muted">These pages describe how this specific gateway works. They are not legal advice, and the operator of this installation should have them reviewed for their jurisdiction before offering the service publicly.</p>`, nav: publicNav() }));
+  });
+
+  app.get('/terms', async (req, res) => {
+    const body = `<p class="lead">Terms of service for merchants using this gateway.</p><p>1. The gateway records payment orders, checkout links and verification decisions. It does not, by itself, move money at a bank. A UPI payment is made by the customer in their own UPI app to the merchant's UPI ID.</p><p>2. Merchants must provide accurate business details and a UPI ID they control. The administrator may approve, reject, suspend or reactivate a merchant account.</p><p>3. Orders become successful only after manual reconciliation against a bank record, or a configured and tested provider/observer confirmation. QR scans, redirects, screenshots and “I have paid” clicks are not proof of payment.</p><p>4. Subscription plans, prices and limits are set by the administrator and may change; existing subscriptions keep the price recorded at subscription time until renewal or change.</p><p>5. Merchants must not use the gateway for unlawful activity, must not collect customer UPI PINs or banking passwords through it, and must keep their API secrets on their own servers only.</p>`;
+    res.send(layout({ title: 'Terms of service', body, nav: publicNav() }));
+  });
+
+  app.get('/privacy', async (req, res) => {
+    const body = `<p class="lead">Privacy policy for this gateway.</p><p>Data collected: merchant business and contact details, UPI ID and payee name, order and customer details supplied by the merchant, webhook delivery logs, and audit logs (actor, action, IP address and time) for sensitive actions.</p><p>Data not collected or stored: customer UPI PINs, banking passwords, full API secrets (only a hash and prefix are stored), and webhook secrets in plain text (they are encrypted at rest and shown only once).</p><p>Data use: operating the gateway, showing each merchant only their own data, delivering signed webhooks to the merchant's configured URL, and auditing sensitive actions. Data is not sold. Session cookies are HttpOnly and used only for login sessions.</p><p>Retention and deletion: order, event, webhook and audit records are kept for reconciliation. A merchant may ask an administrator to close an account; historical order and audit records are retained for reconciliation unless the law requires otherwise.</p>`;
+    res.send(layout({ title: 'Privacy policy', body, nav: publicNav() }));
+  });
+
+  app.get('/refund-policy', async (req, res) => {
+    const body = `<p class="lead">Refund policy for this gateway.</p><p>A refund recorded in this gateway means: an administrator has recorded that a refund was made for a successful order, and a REFUNDED webhook (if configured) is sent to the merchant. It does not, by itself, move money back at the bank.</p><p>To refund a customer, the merchant must first make the actual refund through their bank / UPI arrangement, then ask an administrator to record it (or record it themselves if they are an administrator) on the order's admin detail page, with a reason.</p><p>Only successful orders can be recorded as refunded. Pending, failed, expired or cancelled orders cannot be refunded through the gateway, because no successful payment was recorded for them.</p><p>Subscription fees are billed separately from customer payments. A subscription change or cancellation does not automatically refund customer payments, and does not automatically refund a subscription fee already verified by manual billing; contact support about a subscription billing question.</p>`;
+    res.send(layout({ title: 'Refund policy', body, nav: publicNav() }));
   });
 
   // ---------- Diagnostics (no secrets in output) ----------
@@ -503,7 +668,7 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
   });
 
   app.get('/merchant/login', (req, res) => {
-    res.send(layout({ title: 'Merchant login', body: `<form method="post" action="/merchant/login">${field('Email', 'email', 'email', '', 'required')}${field('Password', 'password', 'password', '', 'required')}<p><button class="btn" type="submit">Log in</button></p></form>` }));
+    res.send(layout({ title: 'Merchant login', body: `<form method="post" action="/merchant/login">${field('Email', 'email', 'email', '', 'required')}${field('Password', 'password', 'password', '', 'required')}<p><button class="btn" type="submit">Log in</button></p></form><p><a href="/merchant/forgot-password">Forgot password?</a> · <a href="/merchant/register">Register</a></p>` }));
   });
 
   app.post('/merchant/login', loginLimiter, async (req, res) => {
@@ -550,8 +715,26 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
     for (const row of stats) { byStatus[row.status] = Number(row.n); totalOrders += Number(row.n); if (row.status === 'success') successTotal = Number(row.total); }
     const [recent] = await pool.query('SELECT * FROM orders WHERE merchant_id = ? ORDER BY created_at DESC LIMIT 10', [m.id]);
     const [keys] = await pool.query('SELECT COUNT(*) AS n FROM merchant_api_keys WHERE merchant_id = ? AND status = ?', [m.id, 'active']);
+    const subCurrent = await getCurrentSubscription(pool, m.id).catch(() => ({ plan: null, subscription: null, isGrace: false, isExpired: false }));
+    const subUsage = await getUsage(pool, m.id).catch(() => ({ ordersThisMonth: 0, apiOrdersThisMonth: 0 }));
+    const emailVerified = await isEmailVerified(pool, m.id).catch(() => false);
+    const onboarding = [
+      { done: Boolean(m.upi_id && m.payee_name), text: 'Profile complete: UPI ID and payee name set', href: '/merchant/profile' },
+      { done: emailVerified, text: 'Email verified', href: '/merchant/security' },
+      { done: Number(keys[0]?.n || 0) > 0, text: 'API key created', href: '/merchant/api-keys' },
+      { done: Boolean(m.webhook_url), text: 'Webhook URL configured', href: '/merchant/webhooks' },
+      { done: totalOrders > 0, text: 'First order created', href: '/merchant/orders/new' },
+      { done: m.status === 'approved', text: 'Account approved by an administrator', href: '/merchant/dashboard' },
+    ];
+    const subPlanName = subCurrent.plan ? (subCurrent.plan.plan_name || subCurrent.plan.name) : '—';
     const body = `
       ${m.status !== 'approved' ? `<div class="alert info">Account status: <strong>${escapeHtml(m.status)}</strong>. ${m.status === 'pending' ? 'An administrator must approve your account before orders can be created (from the dashboard or the API).' : 'This account is suspended. Contact the administrator.'}</div>` : ''}
+      ${subCurrent.isGrace ? '<div class="alert info">Your subscription is in its grace period. Renew or change your plan before grace ends.</div>' : ''}
+      ${subCurrent.isExpired ? '<div class="alert error">Your subscription has expired and grace has ended. New order creation is blocked until you renew or change your plan.</div>' : ''}
+      <div class="grid">
+        <div class="card"><h3>Subscription</h3><p class="big">${escapeHtml(subPlanName)}</p><p>Status: ${escapeHtml(subCurrent.subscription ? subCurrent.subscription.status : 'Free (no subscription record)')} · Orders this month: ${subUsage.ordersThisMonth}</p><p><a class="btn secondary" href="/merchant/subscription">Manage subscription</a></p></div>
+        <div class="card"><h3>Onboarding checklist</h3><ul>${onboarding.map((o) => `<li>${o.done ? '✓' : '○'} ${escapeHtml(o.text)} ${o.done ? '' : `— <a href="${o.href}">Complete</a>`}</li>`).join('')}</ul></div>
+      </div>
       <div class="grid">
         <div class="card"><h3>Total orders</h3><p class="big">${totalOrders}</p></div>
         <div class="card"><h3>Successful revenue</h3><p class="big">${formatPaise(successTotal)}</p></div>
@@ -610,6 +793,10 @@ export function createApp({ config, pool: poolOverride = null, configErrors = []
     const merchant = req.merchant;
     if (merchant.status !== 'approved') {
       return res.status(403).send(layout({ title: 'Create payment link', body: `<div class="alert error">Merchant account is ${escapeHtml(merchant.status)}. Orders require an approved account.</div>`, user: { label: merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    const allowed = await checkOrderAllowed(pool, merchant, 'dashboard').catch(() => ({ allowed: true }));
+    if (!allowed.allowed) {
+      return res.status(403).send(layout({ title: 'Create payment link', body: `<div class="alert error">${escapeHtml(allowed.reason)}</div><p><a href="/merchant/subscription">Manage subscription</a></p>`, user: { label: merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
     }
     const amountPaise = parseRupeesToPaise(String(req.body.amount_rupees || ''));
     const customerEmail = cleanString(req.body.customer_email || '', 255);
@@ -826,9 +1013,252 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     res.send(layout({ title: 'Integration docs', body, user: { label: m.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
   });
 
+  // ---------- Merchant subscription, security, activity ----------
+  app.get('/merchant/subscription', requireMerchant, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const current = await getCurrentSubscription(pool, req.merchant.id);
+    const usage = await getUsage(pool, req.merchant.id);
+    let history = [];
+    try {
+      const [rows] = await pool.query('SELECT ms.*, p.name AS plan_name FROM merchant_subscriptions ms JOIN subscription_plans p ON p.id = ms.plan_id WHERE ms.merchant_id = ? ORDER BY ms.created_at DESC LIMIT 20', [req.merchant.id]);
+      history = rows;
+    } catch { history = []; }
+    const plan = current.plan;
+    const body = `
+      ${current.tablesMissing ? '<div class="alert info">Subscription tables are not installed yet on this database. Ask an administrator to run pending migrations from Admin &gt; Settings. Until then, the Free defaults below are shown for reference only.</div>' : ''}
+      ${current.isGrace ? '<div class="alert info">Your subscription is in its grace period. Renew or change your plan before grace ends, or new order creation will be blocked.</div>' : ''}
+      ${current.isExpired ? '<div class="alert error">Your subscription has expired and the grace period has ended. New order creation is blocked until you renew or change your plan.</div>' : ''}
+      <div class="grid">
+        <div class="card"><h3>Current plan</h3><p class="big">${escapeHtml(plan ? (plan.plan_name || plan.name) : '—')}</p><p>Status: ${escapeHtml(current.subscription ? current.subscription.status : 'Free (no subscription record)')} · Payment: ${escapeHtml(current.subscription ? current.subscription.payment_status : 'not_required')}</p><p>${current.subscription ? `Started: ${formatDate(current.subscription.started_at)} · Renews: ${formatDate(current.subscription.renews_at)} · Expires: ${formatDate(current.subscription.expires_at)} · Grace until: ${formatDate(current.subscription.grace_until)}` : 'Free plan: no expiry date in this installation.'}</p></div>
+        <div class="card"><h3>Usage this month</h3><p>Orders: ${usage.ordersThisMonth} / ${plan && plan.transaction_limit !== null && plan.transaction_limit !== undefined ? escapeHtml(String(plan.transaction_limit)) : 'Unlimited'}</p><p>API orders: ${usage.apiOrdersThisMonth} / ${plan && plan.api_limit !== null && plan.api_limit !== undefined ? escapeHtml(String(plan.api_limit)) : 'Unlimited'}</p></div>
+      </div>
+      <p><a class="btn" href="/merchant/subscription/change">Change plan</a> <a class="btn secondary" href="/pricing">See all plans</a></p>
+      <p class="muted">Subscription billing is separate from the payments your customers make to you. A subscription record alone is not proof that the subscription fee was paid. Paid plans become active only after an administrator verifies the subscription payment through manual billing (or a configured provider confirmation, which is not included here).</p>
+      <h2>Billing history</h2>
+      ${history.length ? `<table><thead><tr><th>Plan</th><th>Cycle</th><th>Price</th><th>Status</th><th>Payment</th><th>Reference</th><th>Started</th><th>Expires</th></tr></thead><tbody>${history.map((s) => `<tr><td>${escapeHtml(s.plan_name)}</td><td>${escapeHtml(s.billing_cycle)}</td><td>${formatPaise(s.plan_price_paise)}</td><td>${escapeHtml(s.status)}</td><td>${escapeHtml(s.payment_status)}</td><td>${escapeHtml(s.billing_reference || '—')}</td><td>${formatDate(s.started_at)}</td><td>${formatDate(s.expires_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No subscription records yet. You are on the Free defaults until you choose a plan.</p>'}
+    `;
+    res.send(layout({ title: 'Subscription', body, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  app.get('/merchant/subscription/change', requireMerchant, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    let plans = [];
+    try { plans = await getActivePlans(pool); } catch { plans = []; }
+    if (!plans.length) plans = FALLBACK_PLANS;
+    const current = await getCurrentSubscription(pool, req.merchant.id);
+    const currentSlug = current.plan ? (current.plan.plan_slug || current.plan.slug) : '';
+    const body = `
+      <p class="muted">Choosing a paid plan creates a pending upgrade request. Your current plan stays active until an administrator verifies the subscription payment through manual billing. Choosing Free takes effect immediately.</p>
+      <div class="grid">${plans.map((p) => `<div class="card"><h3>${escapeHtml(p.name)}</h3><p class="big">${escapeHtml(planPriceText(p))}</p><p>${escapeHtml(p.description || '')}</p><p class="muted">Transactions / month: ${p.transaction_limit === null || p.transaction_limit === undefined ? 'Unlimited' : escapeHtml(String(p.transaction_limit))} · API / month: ${p.api_limit === null || p.api_limit === undefined ? 'Unlimited' : escapeHtml(String(p.api_limit))}</p>${p.slug === currentSlug ? '<p><strong>Current plan</strong></p>' : `<form method="post" action="/merchant/subscription/change">${csrfField(req.csrf)}<input type="hidden" name="plan_id" value="${escapeHtml(p.id || '')}"><input type="hidden" name="plan_slug" value="${escapeHtml(p.slug)}"><label>Billing cycle<select name="billing_cycle"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label><p><button class="btn" type="submit">Choose ${escapeHtml(p.name)}</button></p></form>`}</div>`).join('')}</div>
+    `;
+    res.send(layout({ title: 'Change plan', body, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  app.post('/merchant/subscription/change', requireMerchant, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    let plan = null;
+    if (req.body.plan_id) plan = await getPlanById(pool, req.body.plan_id).catch(() => null);
+    if (!plan && req.body.plan_slug) plan = await getPlanBySlug(pool, req.body.plan_slug).catch(() => null);
+    if (!plan || !plan.is_active) {
+      return res.status(400).send(layout({ title: 'Change plan', body: `<div class="alert error">That plan is not available. Please choose an active plan.</div><p><a href="/merchant/subscription/change">Back</a></p>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    const cycle = req.body.billing_cycle === 'annual' ? 'annual' : 'monthly';
+    const current = await getCurrentSubscription(pool, req.merchant.id);
+    if (current.plan && (current.plan.plan_slug || current.plan.slug) === plan.slug && current.subscription) {
+      return res.status(400).send(layout({ title: 'Change plan', body: `<div class="alert error">You are already on this plan.</div><p><a href="/merchant/subscription">Back to subscription</a></p>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    const price = cycle === 'annual' ? Number(plan.price_annual_paise || 0) : Number(plan.price_monthly_paise || 0);
+    // Free: immediate. Paid: pending_payment, previous plan stays
+    // active until an admin verifies the subscription payment.
+    const sub = await createSubscription(pool, { merchantId: req.merchant.id, plan, billingCycle: cycle, status: price === 0 ? 'active' : 'pending_payment', paymentStatus: price === 0 ? 'not_required' : 'pending_manual' }).catch(() => null);
+    if (!sub) {
+      return res.status(503).send(layout({ title: 'Change plan', body: `<div class="alert error">Subscriptions are not available yet on this database. Ask an administrator to run pending migrations from Admin &gt; Settings.</div>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    if (price === 0 && current.subscription) {
+      await pool.query("UPDATE merchant_subscriptions SET status = 'cancelled', cancelled_at = UTC_TIMESTAMP() WHERE merchant_id = ? AND status = 'active' AND id != ?", [req.merchant.id, sub.id]).catch(() => {});
+    }
+    await audit(pool, { actorType: 'merchant', actorId: req.merchant.id, merchantId: req.merchant.id, entityType: 'subscription', entityId: sub.id, action: price === 0 ? 'subscription_changed_free' : 'subscription_upgrade_requested', details: { plan_slug: plan.slug, billing_cycle: cycle }, ip: req.ip });
+    const msg = price === 0
+      ? 'Your plan has been changed to Free with immediate effect.'
+      : 'Your upgrade request has been recorded and is pending payment verification. Your current plan stays active until an administrator verifies the subscription payment through manual billing. Contact support if you have already paid.';
+    res.send(layout({ title: 'Change plan', body: `<div class="alert success">${escapeHtml(msg)}</div><p><a class="btn" href="/merchant/subscription">View subscription</a></p>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  app.get('/merchant/security', requireMerchant, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const verified = await isEmailVerified(pool, req.merchant.id).catch(() => false);
+    const body = `
+      <h2>Change password</h2>
+      <form method="post" action="/merchant/security/password">${csrfField(req.csrf)}${field('Current password', 'current_password', 'password', '', 'required')}${field('New password (at least 10 characters)', 'new_password', 'password', '', 'required')}${field('Confirm new password', 'new_password_confirm', 'password', '', 'required')}<p><button class="btn" type="submit">Change password</button></p></form>
+      <p class="muted">Changing your password signs you out of your other sessions. Your current session stays signed in.</p>
+      <h2>Email verification</h2>
+      <p>Email verified: <strong>${verified ? 'Yes' : 'No'}</strong></p>
+      ${verified ? '' : `<form method="post" action="/merchant/security/verify-email">${csrfField(req.csrf)}<p><button class="btn secondary" type="submit">Send verification link</button></p></form><p class="muted">If no email service is configured for this installation, the link cannot be sent by email. In that case, ask an administrator to mark your email verified after confirming your identity through support.</p>`}
+      <p class="muted">Email delivery is configured: <strong>${mailerConfigured() ? 'Yes' : 'No — SMTP is not set in the environment, so verification and reset emails cannot be sent yet.'}</strong></p>
+    `;
+    res.send(layout({ title: 'Security', body, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  app.post('/merchant/security/password', requireMerchant, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const current = String(req.body.current_password || '');
+    const next = String(req.body.new_password || '');
+    const confirm = String(req.body.new_password_confirm || '');
+    if (!current || next.length < 10 || next !== confirm) {
+      return res.status(400).send(layout({ title: 'Security', body: `<div class="alert error">Check your current password, and make the new password at least 10 characters, matching its confirmation.</div><p><a href="/merchant/security">Back</a></p>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    let ok = false;
+    try { ok = await verifyPassword(current, req.merchant.password_hash); } catch { ok = false; }
+    if (!ok) {
+      return res.status(403).send(layout({ title: 'Security', body: `<div class="alert error">Current password is incorrect.</div><p><a href="/merchant/security">Back</a></p>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    const hash = await hashPassword(next);
+    await pool.query('UPDATE merchants SET password_hash = ? WHERE id = ?', [hash, req.merchant.id]);
+    try { await pool.query('DELETE FROM sessions WHERE actor_type = ? AND actor_id = ? AND token_hash != ?', ['merchant', req.merchant.id, sha256Hex(req.merchantToken)]); } catch {}
+    await audit(pool, { actorType: 'merchant', actorId: req.merchant.id, merchantId: req.merchant.id, entityType: 'merchant', entityId: req.merchant.slug, action: 'merchant_password_changed', details: {}, ip: req.ip });
+    res.send(layout({ title: 'Security', body: `<div class="alert success">Password changed. Your other sessions have been signed out.</div><p><a class="btn secondary" href="/merchant/dashboard">Back to dashboard</a></p>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  app.post('/merchant/security/verify-email', requireMerchant, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const created = await createEmailVerification(pool, req.merchant.id).catch(() => null);
+    if (!created) {
+      return res.status(503).send(layout({ title: 'Security', body: `<div class="alert error">Email verification is not available yet on this database. Ask an administrator to run pending migrations.</div>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    if (!mailerConfigured()) {
+      return res.send(layout({ title: 'Security', body: `<div class="alert info">A verification token was created, but no email service is configured for this installation, so no email was sent. Ask an administrator to mark your email verified after confirming your identity through support.</div>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+    try {
+      const base = config.baseUrl || '';
+      await sendMail({ to: req.merchant.contact_email, subject: 'Verify your YOUPI PG email', text: `Verify your email by opening this link (valid for 24 hours): ${base}/merchant/verify-email?token=${created.token}` });
+      res.send(layout({ title: 'Security', body: `<div class="alert success">Verification link sent to your email address.</div>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    } catch {
+      res.status(503).send(layout({ title: 'Security', body: `<div class="alert error">The verification email could not be sent. Please try again later or contact support.</div>`, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+    }
+  });
+
+  app.get('/merchant/verify-email', async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const found = await findValidEmailVerification(pool, String(req.query.token || '')).catch(() => null);
+    if (!found) {
+      return res.status(400).send(layout({ title: 'Email verification', body: `<div class="alert error">This verification link is invalid, expired, or already used.</div><p><a href="/merchant/login">Merchant login</a></p>` }));
+    }
+    await pool.query('UPDATE email_verifications SET verified_at = UTC_TIMESTAMP() WHERE id = ?', [found.id]);
+    await audit(pool, { actorType: 'merchant', actorId: found.merchant_id, merchantId: found.merchant_id, entityType: 'merchant', entityId: found.merchant_id, action: 'merchant_email_verified', details: {}, ip: req.ip });
+    res.send(layout({ title: 'Email verification', body: `<div class="alert success">Your email address is now verified.</div><p><a class="btn" href="/merchant/login">Merchant login</a></p>` }));
+  });
+
+  app.get('/merchant/activity', requireMerchant, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const { page, perPage, offset } = pagination(req.query);
+    const [rows] = await pool.query('SELECT * FROM audit_logs WHERE merchant_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?', [req.merchant.id, perPage + 1, offset]);
+    const hasMore = rows.length > perPage;
+    const shown = hasMore ? rows.slice(0, perPage) : rows;
+    const body = `
+      <p class="muted">Activity for your account only: logins, profile changes, API key actions, order creation, subscription changes and password changes, with IP address and time where recorded.</p>
+      ${shown.length ? `<table><thead><tr><th>When</th><th>Action</th><th>Entity</th><th>IP</th></tr></thead><tbody>${shown.map((r) => `<tr><td>${formatDate(r.created_at)}</td><td>${escapeHtml(r.action)}</td><td>${escapeHtml(r.entity_type)}: ${escapeHtml(r.entity_id)}</td><td>${escapeHtml(r.ip_address || '—')}</td></tr>`).join('')}</tbody></table>${paginationLinks(`/merchant/activity?`, page, perPage, hasMore)}` : '<p class="muted">No activity yet.</p>'}
+    `;
+    res.send(layout({ title: 'Account activity', body, user: { label: req.merchant.business_name, logout: '/merchant/logout' }, nav: merchantNav() }));
+  });
+
+  // Password reset (merchant and admin, same token rules). Requests
+  // never reveal whether an account exists, and a token is never
+  // shown in a page or a response.
+  app.get('/merchant/forgot-password', async (req, res) => {
+    res.send(layout({ title: 'Forgot password', body: `<form method="post" action="/merchant/forgot-password">${field('Merchant email', 'email', 'email', '', 'required')}<p><button class="btn" type="submit">Request reset link</button></p></form><p class="muted">If an account exists for that email, a reset link will be sent when an email service is configured. The link is valid for 1 hour and can be used once.</p>` }));
+  });
+
+  app.post('/merchant/forgot-password', loginLimiter, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const email = cleanString(req.body.email || '', 255);
+    const generic = `<div class="alert success">If an account exists for that email, a password reset link has been requested. Check your email (when an email service is configured for this installation).</div><p><a href="/merchant/login">Merchant login</a></p>`;
+    if (!isEmail(email)) {
+      return res.send(layout({ title: 'Forgot password', body: generic }));
+    }
+    try {
+      const [rows] = await pool.query('SELECT id, contact_email FROM merchants WHERE contact_email = ?', [email]);
+      if (rows[0]) {
+        const created = await createPasswordReset(pool, 'merchant', rows[0].id);
+        if (mailerConfigured()) {
+          try {
+            const base = config.baseUrl || '';
+            await sendMail({ to: rows[0].contact_email, subject: 'Reset your YOUPI PG password', text: `Reset your password with this link (valid for 1 hour, single use): ${base}/merchant/reset-password?token=${created.token}` });
+          } catch { /* generic message still applies; do not leak the failure reason */ }
+        }
+      }
+    } catch { /* generic message still applies */ }
+    res.send(layout({ title: 'Forgot password', body: generic }));
+  });
+
+  app.get('/merchant/reset-password', async (req, res) => {
+    res.send(layout({ title: 'Reset password', body: `<form method="post" action="/merchant/reset-password"><input type="hidden" name="token" value="${escapeHtml(String(req.query.token || ''))}">${field('New password (at least 10 characters)', 'new_password', 'password', '', 'required')}${field('Confirm new password', 'new_password_confirm', 'password', '', 'required')}<p><button class="btn" type="submit">Reset password</button></p></form>` }));
+  });
+
+  app.post('/merchant/reset-password', loginLimiter, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const token = String(req.body.token || '');
+    const next = String(req.body.new_password || '');
+    const confirm = String(req.body.new_password_confirm || '');
+    const found = await findValidPasswordReset(pool, token).catch(() => null);
+    if (!found || found.user_type !== 'merchant' || next.length < 10 || next !== confirm) {
+      return res.status(400).send(layout({ title: 'Reset password', body: `<div class="alert error">This reset link is invalid, expired, or already used, or the new password does not meet the requirements.</div><p><a href="/merchant/forgot-password">Request a new link</a></p>` }));
+    }
+    const hash = await hashPassword(next);
+    await pool.query('UPDATE merchants SET password_hash = ? WHERE id = ?', [hash, found.user_id]);
+    await markPasswordResetUsed(pool, found.id);
+    try { await pool.query('DELETE FROM sessions WHERE actor_type = ? AND actor_id = ?', ['merchant', found.user_id]); } catch {}
+    await audit(pool, { actorType: 'merchant', actorId: found.user_id, merchantId: found.user_id, entityType: 'merchant', entityId: found.user_id, action: 'merchant_password_reset', details: {}, ip: req.ip });
+    res.send(layout({ title: 'Reset password', body: `<div class="alert success">Password reset. You can now log in with your new password.</div><p><a class="btn" href="/merchant/login">Merchant login</a></p>` }));
+  });
+
+  app.get('/admin/forgot-password', async (req, res) => {
+    res.send(layout({ title: 'Admin forgot password', body: `<form method="post" action="/admin/forgot-password">${field('Admin email', 'email', 'email', '', 'required')}<p><button class="btn" type="submit">Request reset link</button></p></form><p class="muted">If an account exists for that email, a reset link will be sent when an email service is configured. The link is valid for 1 hour and can be used once.</p>` }));
+  });
+
+  app.post('/admin/forgot-password', loginLimiter, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const email = cleanString(req.body.email || '', 255);
+    const generic = `<div class="alert success">If an account exists for that email, a password reset link has been requested.</div><p><a href="/admin/login">Admin login</a></p>`;
+    if (!isEmail(email)) return res.send(layout({ title: 'Admin forgot password', body: generic }));
+    try {
+      const [rows] = await pool.query('SELECT id, email FROM admins WHERE email = ?', [email]);
+      if (rows[0]) {
+        const created = await createPasswordReset(pool, 'admin', rows[0].id);
+        if (mailerConfigured()) {
+          try {
+            const base = config.baseUrl || '';
+            await sendMail({ to: rows[0].email, subject: 'Reset your YOUPI PG admin password', text: `Reset your password with this link (valid for 1 hour, single use): ${base}/admin/reset-password?token=${created.token}` });
+          } catch {}
+        }
+      }
+    } catch {}
+    res.send(layout({ title: 'Admin forgot password', body: generic }));
+  });
+
+  app.get('/admin/reset-password', async (req, res) => {
+    res.send(layout({ title: 'Admin reset password', body: `<form method="post" action="/admin/reset-password"><input type="hidden" name="token" value="${escapeHtml(String(req.query.token || ''))}">${field('New password (at least 10 characters)', 'new_password', 'password', '', 'required')}${field('Confirm new password', 'new_password_confirm', 'password', '', 'required')}<p><button class="btn" type="submit">Reset password</button></p></form>` }));
+  });
+
+  app.post('/admin/reset-password', loginLimiter, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const token = String(req.body.token || '');
+    const next = String(req.body.new_password || '');
+    const confirm = String(req.body.new_password_confirm || '');
+    const found = await findValidPasswordReset(pool, token).catch(() => null);
+    if (!found || found.user_type !== 'admin' || next.length < 10 || next !== confirm) {
+      return res.status(400).send(layout({ title: 'Admin reset password', body: `<div class="alert error">This reset link is invalid, expired, or already used, or the new password does not meet the requirements.</div><p><a href="/admin/forgot-password">Request a new link</a></p>` }));
+    }
+    const hash = await hashPassword(next);
+    await pool.query('UPDATE admins SET password_hash = ? WHERE id = ?', [hash, found.user_id]);
+    await markPasswordResetUsed(pool, found.id);
+    try { await pool.query('DELETE FROM sessions WHERE actor_type = ? AND actor_id = ?', ['admin', found.user_id]); } catch {}
+    await audit(pool, { actorType: 'admin', actorId: found.user_id, merchantId: null, entityType: 'admin', entityId: found.user_id, action: 'admin_password_reset', details: {}, ip: req.ip });
+    res.send(layout({ title: 'Admin reset password', body: `<div class="alert success">Password reset. You can now log in with your new password.</div><p><a class="btn" href="/admin/login">Admin login</a></p>` }));
+  });
+
   // ---------- Admin ----------
   app.get('/admin/login', (req, res) => {
-    res.send(layout({ title: 'Admin login', body: `<form method="post" action="/admin/login">${field('Email', 'email', 'email', '', 'required')}${field('Password', 'password', 'password', '', 'required')}<p><button class="btn" type="submit">Log in</button></p></form>` }));
+    res.send(layout({ title: 'Admin login', body: `<form method="post" action="/admin/login">${field('Email', 'email', 'email', '', 'required')}${field('Password', 'password', 'password', '', 'required')}<p><button class="btn" type="submit">Log in</button></p></form><p><a href="/admin/forgot-password">Forgot password?</a></p>` }));
   });
 
   app.post('/admin/login', loginLimiter, async (req, res) => {
@@ -918,6 +1348,8 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
       <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/approve" style="display:inline">${csrfField(req.csrf)}<button class="btn" type="submit">Approve</button></form>
       <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/suspend" style="display:inline">${csrfField(req.csrf)}<input name="reason" placeholder="Reason (required for suspension/rejection)" style="width:280px"><button type="submit">Suspend / Reject</button></form>
       <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/reactivate" style="display:inline">${csrfField(req.csrf)}<button class="btn secondary" type="submit">Reactivate</button></form>
+      <form method="post" action="/admin/merchants/${escapeHtml(m.id)}/verify-email" style="display:inline">${csrfField(req.csrf)}<button class="btn secondary" type="submit">Mark email verified (admin-confirmed)</button></form>
+      <p class="muted">Mark email verified only after confirming the merchant's identity through support or another trusted channel. This is the fallback when no email service is configured to send a verification link.</p>
       <h2>Recent orders</h2>${ordersTable(orders, { detailBase: '/admin/orders' })}
       <h2>API keys</h2>${keys.length ? `<table><thead><tr><th>Prefix</th><th>Type</th><th>Name</th><th>Status</th><th>Created</th></tr></thead><tbody>${keys.map((k) => `<tr><td><code>${escapeHtml(k.key_prefix)}</code></td><td>${escapeHtml(k.key_type)}</td><td>${escapeHtml(k.name || '—')}</td><td>${escapeHtml(k.status)}</td><td>${formatDate(k.created_at)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No API keys.</p>'}
     `;
@@ -941,6 +1373,19 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: m.id, entityType: 'merchant', entityId: m.slug, action: `merchant_${action}`, details: { reason }, ip: req.ip });
     res.redirect(`/admin/merchants/${m.id}`);
   }
+  app.post('/admin/merchants/:id/verify-email', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const [rows] = await pool.query('SELECT id FROM merchants WHERE id = ?', [req.params.id]);
+    if (!rows[0]) return res.status(404).send('Merchant not found.');
+    try {
+      await pool.query('INSERT INTO email_verifications (id, merchant_id, token_hash, expires_at, verified_at) VALUES (?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())', [randomUUID(), req.params.id, sha256Hex(`admin-verified-${req.params.id}-${Date.now()}`)]);
+    } catch {
+      return res.status(503).send(layout({ title: 'Merchant', body: `<div class="alert error">Email verification is not available yet on this database. Run pending migrations first.</div>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    }
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: req.params.id, entityType: 'merchant', entityId: req.params.id, action: 'merchant_email_verified_by_admin', details: {}, ip: req.ip });
+    res.redirect(`/admin/merchants/${escapeHtml(req.params.id)}`);
+  });
+
   app.post('/admin/merchants/:id/approve', requireAdmin, requireCsrf, (req, res) => adminMerchantAction(req, res, 'approve'));
   app.post('/admin/merchants/:id/suspend', requireAdmin, requireCsrf, (req, res) => adminMerchantAction(req, res, 'suspend'));
   app.post('/admin/merchants/:id/reactivate', requireAdmin, requireCsrf, (req, res) => adminMerchantAction(req, res, 'reactivate'));
@@ -1087,9 +1532,14 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
       <ul>
         <li>Provider webhook configured: <strong>${providerConfigured ? 'Yes (secret is set in the environment; its value is never shown here)' : 'No — provider mode must not be enabled until a real provider is configured and tested'}</strong></li>
         <li>External observer token configured: <strong>${observerConfigured ? 'Yes (token is set in the environment; its value is never shown here)' : 'No — observer ingestion is disabled until OBSERVER_API_TOKEN is set'}</strong></li>
+        <li>Email (SMTP) configured: <strong>${mailerConfigured() ? 'Yes (host, user and sender are set; passwords are never shown here)' : 'No — password-reset and email-verification emails cannot be sent until SMTP_HOST, SMTP_USER, SMTP_PASS and SMTP_FROM are set'}</strong></li>
+        <li>Subscription billing provider: <strong>No provider configured — subscription payments are handled by manual billing only, verified by an admin. A subscription record alone is not proof of payment.</strong></li>
         <li>Checkout expiry: ${CHECKOUT_EXPIRY_MINUTES} minutes. Cron: POST /cron/webhooks and POST /cron/expire, protected by CRON_SECRET when set.</li>
       </ul>
       <p class="muted">Changing verification mode here does not by itself create a provider or observer integration. Provider and observer endpoints still validate their own secrets, amounts, merchants, order status and duplicate fingerprints before any order can succeed.</p>
+      <h2>Database migrations</h2>
+      <p class="muted">For an existing installation, new migrations (for example 004 for subscriptions) are not applied automatically on startup. Run them here; this never drops tables or deletes data, it only creates new tables and records the migration.</p>
+      <form method="post" action="/admin/migrations">${csrfField(req.csrf)}<p><button class="btn" type="submit">Run pending migrations</button></p></form>
     `;
     res.send(layout({ title: 'Application settings', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
   });
@@ -1112,6 +1562,247 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     await setSetting(pool, 'verification_mode', { value: mode });
     await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: null, entityType: 'app', entityId: 'settings', action: 'settings_updated', details: { verification_mode: mode }, ip: req.ip });
     res.redirect('/admin/settings');
+  });
+
+  // ---------- Admin: migrations, plans, subscriptions, support, usage ----------
+  app.post('/admin/migrations', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    let results = [];
+    try {
+      results = await migrate({ config, apply: true, pool });
+    } catch (err) {
+      return res.status(500).send(layout({ title: 'Migrations', body: `<div class="alert error">Migration failed: ${escapeHtml(String(err.message))}</div><p><a href="/admin/settings">Back to settings</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    }
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: null, entityType: 'app', entityId: 'migrations', action: 'migrations_run', details: { results: results.map((r) => `${r.version}:${r.status}`) }, ip: req.ip });
+    res.send(layout({ title: 'Migrations', body: `<div class="alert success">Migrations checked.</div><ul>${results.map((r) => `<li>${escapeHtml(r.version)}: ${escapeHtml(r.status)}</li>`).join('')}</ul><p><a class="btn secondary" href="/admin/settings">Back to settings</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  function planForm(plan, csrf) {
+    const features = plan ? parsePlanFeatures(plan).join(', ') : '';
+    return `<form method="post" action="${plan ? `/admin/plans/${plan.id}/edit` : '/admin/plans'}">${csrf}${field('Plan name', 'name', 'text', plan?.name || '', 'required')}${field('Slug (lowercase, letters, numbers, hyphens)', 'slug', 'text', plan?.slug || '', 'required')}${field('Description', 'description', 'text', plan?.description || '')}${field('Monthly price (paise, 0 = free)', 'price_monthly_paise', 'number', plan ? String(plan.price_monthly_paise) : '0', 'required')}${field('Annual price (paise, 0 = free)', 'price_annual_paise', 'number', plan ? String(plan.price_annual_paise) : '0', 'required')}${field('Transaction limit per month (blank = unlimited)', 'transaction_limit', 'number', plan?.transaction_limit === null || plan?.transaction_limit === undefined ? '' : String(plan.transaction_limit))}${field('API limit per month (blank = unlimited)', 'api_limit', 'number', plan?.api_limit === null || plan?.api_limit === undefined ? '' : String(plan.api_limit))}${field('Features (comma-separated)', 'features', 'text', features)}<p><button class="btn" type="submit">${plan ? 'Save plan' : 'Create plan'}</button></p></form>`;
+  }
+
+  app.get('/admin/plans', requireAdmin, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    let plans = [];
+    try { const [rows] = await pool.query('SELECT * FROM subscription_plans ORDER BY price_monthly_paise ASC, created_at ASC'); plans = rows; } catch { plans = []; }
+    const body = `
+      ${plans.length ? '' : '<div class="alert info">No plans found. Run pending migrations from Admin &gt; Settings first (migration 004 creates the default plans), or create a plan below.</div>'}
+      <p><a class="btn" href="/admin/plans/new">Create plan</a></p>
+      ${plans.length ? `<table><thead><tr><th>Name</th><th>Slug</th><th>Monthly</th><th>Annual</th><th>Tx / mo</th><th>API / mo</th><th>Active</th><th>Actions</th></tr></thead><tbody>${plans.map((p) => `<tr><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.slug)}</td><td>${formatPaise(p.price_monthly_paise)}</td><td>${formatPaise(p.price_annual_paise)}</td><td>${p.transaction_limit === null ? 'Unlimited' : escapeHtml(String(p.transaction_limit))}</td><td>${p.api_limit === null ? 'Unlimited' : escapeHtml(String(p.api_limit))}</td><td>${p.is_active ? 'Yes' : 'No'}</td><td><a href="/admin/plans/${escapeHtml(p.id)}/edit">Edit</a> <form method="post" action="/admin/plans/${escapeHtml(p.id)}/toggle" style="display:inline">${csrfField(req.csrf)}<button type="submit">${p.is_active ? 'Deactivate' : 'Activate'}</button></form></td></tr>`).join('')}</tbody></table>` : ''}
+    `;
+    res.send(layout({ title: 'Subscription plans', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  app.get('/admin/plans/new', requireAdmin, async (req, res) => {
+    res.send(layout({ title: 'Create plan', body: planForm(null, csrfField(req.csrf)), user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  app.post('/admin/plans', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const name = cleanString(req.body.name || '', 100);
+    const slug = cleanString(req.body.slug || '', 100);
+    const monthly = Number(req.body.price_monthly_paise || 0);
+    const annual = Number(req.body.price_annual_paise || 0);
+    const txLimit = req.body.transaction_limit === '' || req.body.transaction_limit === undefined ? null : Number(req.body.transaction_limit);
+    const apiLimit = req.body.api_limit === '' || req.body.api_limit === undefined ? null : Number(req.body.api_limit);
+    if (!name || !/^[a-z0-9][a-z0-9-]{2,98}$/.test(slug) || !Number.isInteger(monthly) || monthly < 0 || !Number.isInteger(annual) || annual < 0 || (txLimit !== null && (!Number.isInteger(txLimit) || txLimit <= 0)) || (apiLimit !== null && (!Number.isInteger(apiLimit) || apiLimit <= 0))) {
+      return res.status(400).send(layout({ title: 'Create plan', body: `<div class="alert error">Check the plan name, slug, prices (integer paise, 0 or more) and limits (positive integer or blank for unlimited).</div><p><a href="/admin/plans/new">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    }
+    const features = cleanString(req.body.features || '', 2000).split(',').map((s) => s.trim()).filter(Boolean);
+    try {
+      await pool.query('INSERT INTO subscription_plans (id, name, slug, description, price_monthly_paise, price_annual_paise, transaction_limit, api_limit, features, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)', [randomUUID(), name, slug, cleanString(req.body.description || '', 2000) || null, monthly, annual, txLimit, apiLimit, JSON.stringify(features)]);
+    } catch {
+      return res.status(409).send(layout({ title: 'Create plan', body: `<div class="alert error">A plan with that slug already exists.</div><p><a href="/admin/plans/new">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    }
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: null, entityType: 'plan', entityId: slug, action: 'plan_created', details: { name }, ip: req.ip });
+    res.redirect('/admin/plans');
+  });
+
+  app.get('/admin/plans/:id/edit', requireAdmin, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const plan = await getPlanById(pool, req.params.id).catch(() => null);
+    if (!plan) return res.status(404).send('Plan not found.');
+    res.send(layout({ title: 'Edit plan', body: planForm(plan, csrfField(req.csrf)), user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  app.post('/admin/plans/:id/edit', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const plan = await getPlanById(pool, req.params.id).catch(() => null);
+    if (!plan) return res.status(404).send('Plan not found.');
+    const name = cleanString(req.body.name || '', 100);
+    const slug = cleanString(req.body.slug || '', 100);
+    const monthly = Number(req.body.price_monthly_paise || 0);
+    const annual = Number(req.body.price_annual_paise || 0);
+    const txLimit = req.body.transaction_limit === '' || req.body.transaction_limit === undefined ? null : Number(req.body.transaction_limit);
+    const apiLimit = req.body.api_limit === '' || req.body.api_limit === undefined ? null : Number(req.body.api_limit);
+    if (!name || !/^[a-z0-9][a-z0-9-]{2,98}$/.test(slug) || !Number.isInteger(monthly) || monthly < 0 || !Number.isInteger(annual) || annual < 0 || (txLimit !== null && (!Number.isInteger(txLimit) || txLimit <= 0)) || (apiLimit !== null && (!Number.isInteger(apiLimit) || apiLimit <= 0))) {
+      return res.status(400).send(layout({ title: 'Edit plan', body: `<div class="alert error">Check the plan name, slug, prices and limits.</div><p><a href="/admin/plans">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    }
+    const features = cleanString(req.body.features || '', 2000).split(',').map((s) => s.trim()).filter(Boolean);
+    try {
+      await pool.query('UPDATE subscription_plans SET name = ?, slug = ?, description = ?, price_monthly_paise = ?, price_annual_paise = ?, transaction_limit = ?, api_limit = ?, features = ? WHERE id = ?', [name, slug, cleanString(req.body.description || '', 2000) || null, monthly, annual, txLimit, apiLimit, JSON.stringify(features), plan.id]);
+    } catch {
+      return res.status(409).send(layout({ title: 'Edit plan', body: `<div class="alert error">A plan with that slug already exists.</div><p><a href="/admin/plans">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    }
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: null, entityType: 'plan', entityId: slug, action: 'plan_updated', details: { name }, ip: req.ip });
+    res.redirect('/admin/plans');
+  });
+
+  app.post('/admin/plans/:id/toggle', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const plan = await getPlanById(pool, req.params.id).catch(() => null);
+    if (!plan) return res.status(404).send('Plan not found.');
+    await pool.query('UPDATE subscription_plans SET is_active = ? WHERE id = ?', [plan.is_active ? 0 : 1, plan.id]);
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: null, entityType: 'plan', entityId: plan.slug, action: plan.is_active ? 'plan_deactivated' : 'plan_activated', details: {}, ip: req.ip });
+    res.redirect('/admin/plans');
+  });
+
+  app.get('/admin/subscriptions', requireAdmin, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const { page, perPage, offset } = pagination(req.query);
+    const q = cleanString(req.query.q || '', 100);
+    const status = cleanString(req.query.status || '', 20);
+    const where = ['1=1']; const params = [];
+    if (q) { where.push('(m.business_name LIKE ? OR m.contact_email LIKE ? OR p.name LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+    if (status) { where.push('ms.status = ?'); params.push(status); }
+    let subs = [];
+    try {
+      const [rows] = await pool.query(`SELECT ms.*, p.name AS plan_name, m.business_name, m.contact_email FROM merchant_subscriptions ms JOIN subscription_plans p ON p.id = ms.plan_id JOIN merchants m ON m.id = ms.merchant_id WHERE ${where.join(' AND ')} ORDER BY ms.created_at DESC LIMIT ? OFFSET ?`, [...params, perPage + 1, offset]);
+      subs = rows;
+    } catch { subs = []; }
+    const hasMore = subs.length > perPage;
+    const shown = hasMore ? subs.slice(0, perPage) : subs;
+    const base = `/admin/subscriptions?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`;
+    const body = `
+      ${subs.length ? '' : '<div class="alert info">No subscriptions found. Run pending migrations from Admin &gt; Settings first, or wait for a merchant to choose a plan.</div>'}
+      <form method="get" action="/admin/subscriptions" class="inline-form"><input name="q" value="${escapeHtml(q)}" placeholder="Search merchant or plan"><select name="status"><option value="">All statuses</option>${['active', 'pending_payment', 'cancelled', 'expired', 'past_due'].map((s) => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button type="submit">Filter</button></form>
+      ${shown.length ? `<table><thead><tr><th>Merchant</th><th>Plan</th><th>Cycle</th><th>Price</th><th>Status</th><th>Payment</th><th>Expires</th><th>Actions</th></tr></thead><tbody>${shown.map((s) => `<tr><td>${escapeHtml(s.business_name)}</td><td>${escapeHtml(s.plan_name)}</td><td>${escapeHtml(s.billing_cycle)}</td><td>${formatPaise(s.plan_price_paise)}</td><td>${escapeHtml(s.status)}</td><td>${escapeHtml(s.payment_status)}</td><td>${formatDate(s.expires_at)}</td><td>${s.status === 'pending_payment' ? `<form method="post" action="/admin/subscriptions/${escapeHtml(s.id)}/verify-payment" style="display:inline">${csrfField(req.csrf)}<input name="billing_reference" placeholder="Billing reference" style="width:140px" required><button type="submit">Verify payment (manual)</button></form>` : ''} ${s.status === 'active' ? `<form method="post" action="/admin/subscriptions/${escapeHtml(s.id)}/cancel" style="display:inline">${csrfField(req.csrf)}<button type="submit">Cancel</button></form>` : ''}</td></tr>`).join('')}</tbody></table>${paginationLinks(base, page, perPage, hasMore)}` : ''}
+      <h2>Assign a plan to a merchant</h2>
+      <p class="muted">Assigning a paid plan here requires a billing reference, because the admin is confirming that the subscription payment was received through manual billing. A free plan needs no reference. This does not create a provider payment.</p>
+      <form method="post" action="/admin/subscriptions/assign">${csrfField(req.csrf)}${field('Merchant ID', 'merchant_id', 'text', '', 'required')}${field('Plan ID', 'plan_id', 'text', '', 'required')}<label>Billing cycle<select name="billing_cycle"><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label>${field('Billing reference (required for paid plans)', 'billing_reference', 'text', '')}${field('Billing note', 'billing_note', 'text', '')}<p><button class="btn" type="submit">Assign plan</button></p></form>
+    `;
+    res.send(layout({ title: 'Subscriptions', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  app.post('/admin/subscriptions/:id/verify-payment', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const [rows] = await pool.query('SELECT * FROM merchant_subscriptions WHERE id = ?', [req.params.id]);
+    const sub = rows[0];
+    if (!sub || sub.status !== 'pending_payment') return res.status(409).send('Only a pending-payment subscription can be verified.');
+    const ref = cleanString(req.body.billing_reference || '', 255);
+    const note = cleanString(req.body.billing_note || '', 2000);
+    if (!ref) return res.status(400).send(layout({ title: 'Subscriptions', body: `<div class="alert error">A billing reference is required to verify a subscription payment.</div><p><a href="/admin/subscriptions">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    const dates = subscriptionPeriodDates(sub.billing_cycle);
+    await pool.query("UPDATE merchant_subscriptions SET status = 'active', payment_status = 'verified_manual', billing_reference = ?, billing_note = ?, billing_verified_by = ?, billing_verified_at = UTC_TIMESTAMP(), renews_at = ?, expires_at = ?, grace_until = ? WHERE id = ?", [ref, note || null, req.admin.email, dates.renewsAt, dates.expiresAt, dates.graceUntil, sub.id]);
+    await pool.query("UPDATE merchant_subscriptions SET status = 'cancelled', cancelled_at = UTC_TIMESTAMP() WHERE merchant_id = ? AND status = 'active' AND id != ?", [sub.merchant_id, sub.id]);
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: sub.merchant_id, entityType: 'subscription', entityId: sub.id, action: 'subscription_payment_verified_manual', details: { billing_reference: ref }, ip: req.ip });
+    res.redirect('/admin/subscriptions');
+  });
+
+  app.post('/admin/subscriptions/:id/cancel', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const [rows] = await pool.query('SELECT * FROM merchant_subscriptions WHERE id = ?', [req.params.id]);
+    if (!rows[0] || rows[0].status !== 'active') return res.status(409).send('Only an active subscription can be cancelled.');
+    await pool.query("UPDATE merchant_subscriptions SET status = 'cancelled', cancelled_at = UTC_TIMESTAMP() WHERE id = ?", [req.params.id]);
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: rows[0].merchant_id, entityType: 'subscription', entityId: req.params.id, action: 'subscription_cancelled', details: {}, ip: req.ip });
+    res.redirect('/admin/subscriptions');
+  });
+
+  app.post('/admin/subscriptions/assign', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const merchantId = cleanString(req.body.merchant_id || '', 36);
+    const planId = cleanString(req.body.plan_id || '', 36);
+    const cycle = req.body.billing_cycle === 'annual' ? 'annual' : 'monthly';
+    const ref = cleanString(req.body.billing_reference || '', 255);
+    const plan = await getPlanById(pool, planId).catch(() => null);
+    if (!plan || !plan.is_active) return res.status(400).send(layout({ title: 'Subscriptions', body: `<div class="alert error">That plan is not available.</div><p><a href="/admin/subscriptions">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    const [mRows] = await pool.query('SELECT id FROM merchants WHERE id = ?', [merchantId]);
+    if (!mRows[0]) return res.status(404).send(layout({ title: 'Subscriptions', body: `<div class="alert error">Merchant not found. Copy the merchant ID from Admin &gt; Merchants.</div><p><a href="/admin/subscriptions">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    const price = cycle === 'annual' ? Number(plan.price_annual_paise || 0) : Number(plan.price_monthly_paise || 0);
+    if (price > 0 && !ref) {
+      return res.status(400).send(layout({ title: 'Subscriptions', body: `<div class="alert error">A billing reference is required for a paid plan, because assigning it confirms manual billing payment was received.</div><p><a href="/admin/subscriptions">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    }
+    const sub = await createSubscription(pool, { merchantId, plan, billingCycle: cycle, status: price === 0 ? 'active' : 'active', paymentStatus: price === 0 ? 'not_required' : 'verified_manual', billingReference: ref || null, billingNote: cleanString(req.body.billing_note || '', 2000) || null });
+    if (price > 0) {
+      await pool.query('UPDATE merchant_subscriptions SET billing_verified_by = ?, billing_verified_at = UTC_TIMESTAMP() WHERE id = ?', [req.admin.email, sub.id]);
+    }
+    await pool.query("UPDATE merchant_subscriptions SET status = 'cancelled', cancelled_at = UTC_TIMESTAMP() WHERE merchant_id = ? AND status = 'active' AND id != ?", [merchantId, sub.id]);
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId, entityType: 'subscription', entityId: sub.id, action: 'subscription_assigned', details: { plan_slug: plan.slug, billing_cycle: cycle }, ip: req.ip });
+    res.redirect('/admin/subscriptions');
+  });
+
+  app.get('/admin/usage', requireAdmin, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const { page, perPage, offset } = pagination(req.query);
+    let rows = [];
+    try {
+      const [r] = await pool.query(`SELECT m.id, m.business_name, m.contact_email, m.status, (SELECT COUNT(*) FROM orders o WHERE o.merchant_id = m.id AND o.created_at >= DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-01 00:00:00')) AS orders_month, (SELECT COUNT(*) FROM order_events e JOIN orders o2 ON o2.id = e.order_id WHERE o2.merchant_id = m.id AND e.event_type = 'order_created' AND e.source = 'api' AND e.created_at >= DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-01 00:00:00')) AS api_month FROM merchants m ORDER BY m.created_at DESC LIMIT ? OFFSET ?`, [perPage + 1, offset]);
+      rows = r;
+    } catch { rows = []; }
+    const hasMore = rows.length > perPage;
+    const shown = hasMore ? rows.slice(0, perPage) : rows;
+    const enriched = [];
+    for (const m of shown) {
+      const current = await getCurrentSubscription(pool, m.id).catch(() => ({ plan: null }));
+      enriched.push({ ...m, planName: current.plan ? (current.plan.plan_name || current.plan.name) : '—', txLimit: current.plan ? current.plan.transaction_limit : null, apiLimit: current.plan ? current.plan.api_limit : null });
+    }
+    const body = `
+      <p class="muted">Usage for the current calendar month (UTC). Transaction and API counts are computed from orders and order events, not from a separate counter, so they cannot drift from the real order data.</p>
+      ${enriched.length ? `<table><thead><tr><th>Merchant</th><th>Plan</th><th>Orders / mo</th><th>API orders / mo</th><th>Status</th></tr></thead><tbody>${enriched.map((m) => `<tr><td>${escapeHtml(m.business_name)} (${escapeHtml(m.contact_email)})</td><td>${escapeHtml(m.planName)}</td><td>${m.orders_month} / ${m.txLimit === null || m.txLimit === undefined ? 'Unlimited' : escapeHtml(String(m.txLimit))}</td><td>${m.api_month} / ${m.apiLimit === null || m.apiLimit === undefined ? 'Unlimited' : escapeHtml(String(m.apiLimit))}</td><td>${escapeHtml(m.status)}</td></tr>`).join('')}</tbody></table>${paginationLinks('/admin/usage?', page, perPage, hasMore)}` : '<p class="muted">No merchants yet, or usage tables are not available until migrations are run.</p>'}
+    `;
+    res.send(layout({ title: 'API usage and quotas', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  app.get('/admin/support', requireAdmin, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const { page, perPage, offset } = pagination(req.query);
+    const status = cleanString(req.query.status || '', 20);
+    let rows = [];
+    try {
+      const where = status ? 'WHERE status = ?' : '';
+      const params = status ? [status] : [];
+      const [r] = await pool.query(`SELECT * FROM support_messages ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, perPage + 1, offset]);
+      rows = r;
+    } catch { rows = []; }
+    const hasMore = rows.length > perPage;
+    const shown = hasMore ? rows.slice(0, perPage) : rows;
+    const body = `
+      <form method="get" action="/admin/support" class="inline-form"><select name="status"><option value="">All statuses</option>${['open', 'answered', 'closed'].map((s) => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button type="submit">Filter</button></form>
+      ${shown.length ? `<table><thead><tr><th>When</th><th>Name</th><th>Email</th><th>Subject</th><th>Status</th><th>Actions</th></tr></thead><tbody>${shown.map((m) => `<tr><td>${formatDate(m.created_at)}</td><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.email)}</td><td>${escapeHtml(m.subject)}</td><td>${escapeHtml(m.status)}</td><td><a href="/admin/support/${escapeHtml(m.id)}">View / reply</a></td></tr>`).join('')}</tbody></table>${paginationLinks(`/admin/support?status=${encodeURIComponent(status)}&`, page, perPage, hasMore)}` : '<p class="muted">No support messages yet.</p>'}
+    `;
+    res.send(layout({ title: 'Support messages', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  app.get('/admin/support/:id', requireAdmin, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const [rows] = await pool.query('SELECT * FROM support_messages WHERE id = ?', [req.params.id]);
+    if (!rows[0]) return res.status(404).send('Support message not found.');
+    const m = rows[0];
+    const body = `
+      <p><strong>From:</strong> ${escapeHtml(m.name)} (${escapeHtml(m.email)}) · <strong>When:</strong> ${formatDate(m.created_at)} · <strong>Status:</strong> ${escapeHtml(m.status)}</p>
+      <h2>Message</h2><p>${escapeHtml(m.message)}</p>
+      ${m.admin_reply ? `<h2>Admin reply</h2><p>${escapeHtml(m.admin_reply)}</p><p class="muted">Replied: ${formatDate(m.replied_at)}</p>` : ''}
+      <h2>Reply</h2>
+      <form method="post" action="/admin/support/${escapeHtml(m.id)}/reply">${csrfField(req.csrf)}<label>Reply<textarea name="admin_reply" rows="5" required style="width:100%;max-width:640px;padding:.5rem;border:1px solid #cbd5e1;border-radius:8px"></textarea></label><label>Status<select name="status"><option value="answered" ${m.status === 'answered' ? 'selected' : ''}>answered</option><option value="open" ${m.status === 'open' ? 'selected' : ''}>open</option><option value="closed" ${m.status === 'closed' ? 'selected' : ''}>closed</option></select></label><p><button class="btn" type="submit">Save reply</button></p></form>
+      <p class="muted">The reply is stored here. It is sent by email only if an email service is configured for this installation; otherwise, the merchant sees it only if you contact them separately.</p>
+    `;
+    res.send(layout({ title: 'Support message', body, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+  });
+
+  app.post('/admin/support/:id/reply', requireAdmin, requireCsrf, async (req, res) => {
+    const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
+    const [rows] = await pool.query('SELECT * FROM support_messages WHERE id = ?', [req.params.id]);
+    if (!rows[0]) return res.status(404).send('Support message not found.');
+    const reply = cleanString(req.body.admin_reply || '', 5000);
+    const status = ['open', 'answered', 'closed'].includes(req.body.status) ? req.body.status : 'answered';
+    if (!reply) return res.status(400).send(layout({ title: 'Support message', body: `<div class="alert error">Reply cannot be empty.</div><p><a href="/admin/support/${escapeHtml(req.params.id)}">Back</a></p>`, user: { label: req.admin.email, logout: '/admin/logout' }, nav: adminNav() }));
+    await pool.query('UPDATE support_messages SET admin_reply = ?, status = ?, replied_at = UTC_TIMESTAMP() WHERE id = ?', [reply, status, req.params.id]);
+    await audit(pool, { actorType: 'admin', actorId: req.admin.id, merchantId: rows[0].merchant_id, entityType: 'support_message', entityId: req.params.id, action: 'support_replied', details: { status }, ip: req.ip });
+    if (mailerConfigured()) {
+      try { await sendMail({ to: rows[0].email, subject: `Re: ${rows[0].subject}`, text: reply }); } catch {}
+    }
+    res.redirect(`/admin/support/${escapeHtml(req.params.id)}`);
   });
 
   // ---------- Merchant REST API ----------
@@ -1140,6 +1831,8 @@ if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) retu
     const pool = poolOrNull(req, res); if (!pool || res.headersSent) return;
     const merchant = req.apiMerchant;
     if (merchant.status !== 'approved') return res.status(403).json({ error: `Merchant account is ${merchant.status}. API orders require an approved account.` });
+    const allowed = await checkOrderAllowed(pool, merchant, 'api').catch(() => ({ allowed: true }));
+    if (!allowed.allowed) return res.status(403).json({ error: allowed.reason });
     const merchantOrderId = cleanString(req.body.merchant_order_id, 255);
     const amountPaise = parseAmountPaise(req.body);
     const mode = req.body.mode === 'sandbox' ? 'sandbox' : 'live';

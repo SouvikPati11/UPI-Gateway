@@ -10,7 +10,7 @@ const migrationsDir = path.resolve(__dirname, '../migrations');
 
 test('migration 001 exists and creates the required Stage 1 tables', () => {
   const files = listMigrationFiles(migrationsDir);
-  assert.deepEqual(files, ['001_init.sql', '002_order_mode_expiry.sql', '003_order_seq.sql']);
+  assert.deepEqual(files, ['001_init.sql', '002_order_mode_expiry.sql', '003_order_seq.sql', '004_saas.sql']);
   const sql002 = fs.readFileSync(path.join(migrationsDir, '002_order_mode_expiry.sql'), 'utf8');
   assert.ok(sql002.includes('ADD COLUMN mode'));
   assert.ok(sql002.includes('ADD COLUMN expires_at'));
