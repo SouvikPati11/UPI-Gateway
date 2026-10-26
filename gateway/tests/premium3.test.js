@@ -130,11 +130,11 @@ describe('Premium SaaS redesign: charts, copy, docs, homepage', { skip: !enabled
     assert.match(home.text, /mock-wide/);
     assert.match(home.text, /Demo illustration — sample bars only, not company performance/);
     assert.match(home.text, /<div class="feature-icon" aria-hidden="true"><svg/);
-    assert.match(home.text, /style\.css\?v=5/);
+    assert.match(home.text, /style\.css\?v=6/);
   });
 
   test('design system CSS: violet/electric accents, drawer intact, chart + copy styles', async () => {
-    const css = await req('GET', '/public/css/style.css?v=5');
+    const css = await req('GET', '/public/css/style.css?v=6');
     assert.equal(css.status, 200);
     assert.match(css.contentType || '', /text\/css/);
     assert.match(css.text, /--violet:#7c3aed/);

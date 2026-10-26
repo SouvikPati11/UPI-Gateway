@@ -149,7 +149,7 @@ describe('Reference redesign: hero, sidebar, search, stat cards, stacked chart',
       assert.match(r.text, /shell-menu/);
       assert.match(r.text, /data-close-menu/);
     }
-    const css = await req('GET', '/public/css/style.css?v=5');
+    const css = await req('GET', '/public/css/style.css?v=6');
     assert.match(css.text, /\.sidebar\{[^}]*background:#fff/);
     assert.match(css.text, /\.sidebar-nav a\.active\{[^}]*linear-gradient\(135deg,#6366f1,#7c3aed\)/);
   });
@@ -164,7 +164,7 @@ describe('Reference redesign: hero, sidebar, search, stat cards, stacked chart',
   });
 
   test('dark public mobile drawer CSS', async () => {
-    const css = await req('GET', '/public/css/style.css?v=5');
+    const css = await req('GET', '/public/css/style.css?v=6');
     assert.equal(css.status, 200);
     assert.match(css.text, /\.mobile-nav-panel\{position:fixed;top:0;left:0;bottom:0;width:min\(88vw,320px\);background:#0b1220/);
     const home = await req('GET', '/');
@@ -194,7 +194,7 @@ describe('Reference redesign: hero, sidebar, search, stat cards, stacked chart',
     assert.equal(d.status, 200);
     assert.match(d.text, /class="steps-list"/);
     assert.match(d.text, /Integration in 6 steps/);
-    const css = await req('GET', '/public/css/style.css?v=5');
+    const css = await req('GET', '/public/css/style.css?v=6');
     assert.equal(css.status, 200);
     assert.match(css.contentType || '', /text\/css/);
     assert.match(css.text, /\.steps-list li::before/);
