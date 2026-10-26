@@ -8,7 +8,7 @@ function brandHtml() {
 }
 
 function confirmScript() {
-  return `<script>document.addEventListener('submit',function(e){var f=e.target;var m=f.getAttribute&&f.getAttribute('data-confirm');if(m&&!window.confirm(m)){e.preventDefault();}},true);document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('table').forEach(function(table){var headers=[];table.querySelectorAll('thead th').forEach(function(th){headers.push(th.textContent.trim());});if(!headers.length)return;table.querySelectorAll('tbody tr').forEach(function(tr){tr.querySelectorAll('td').forEach(function(td,i){if(!td.getAttribute('data-label')&&headers[i])td.setAttribute('data-label',headers[i]);});});});document.querySelectorAll('.shell-menu, .mobile-nav').forEach(function(d){var nav=d.querySelector('nav');if(!nav)return;var summary=d.querySelector('summary');function close(){d.removeAttribute('open');if(summary)summary.setAttribute('aria-expanded','false');}d.addEventListener('toggle',function(){if(summary)summary.setAttribute('aria-expanded',d.open?'true':'false');});nav.querySelectorAll('a').forEach(function(a){a.addEventListener('click',close);});nav.addEventListener('click',function(e){if(e.target===nav||e.target.closest('[data-close-menu]'))close();});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&d.open)close();});});});</script>`;
+  return `<script>document.addEventListener('submit',function(e){var f=e.target;var m=f.getAttribute&&f.getAttribute('data-confirm');if(m&&!window.confirm(m)){e.preventDefault();}},true);document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('table').forEach(function(table){var headers=[];table.querySelectorAll('thead th').forEach(function(th){headers.push(th.textContent.trim());});if(!headers.length)return;table.querySelectorAll('tbody tr').forEach(function(tr){tr.querySelectorAll('td').forEach(function(td,i){if(!td.getAttribute('data-label')&&headers[i])td.setAttribute('data-label',headers[i]);});});});document.querySelectorAll('.shell-menu, .mobile-nav').forEach(function(d){var nav=d.querySelector('nav');if(!nav)return;var summary=d.querySelector('summary');function close(){d.removeAttribute('open');if(summary)summary.setAttribute('aria-expanded','false');}d.addEventListener('toggle',function(){if(summary)summary.setAttribute('aria-expanded',d.open?'true':'false');});nav.querySelectorAll('a').forEach(function(a){a.addEventListener('click',close);});nav.addEventListener('click',function(e){if(e.target===nav||e.target.closest('[data-close-menu]'))close();});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&d.open)close();});});document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-copy-text]');if(!b)return;var text=b.getAttribute('data-copy-text')||'';function done(){var old=b.textContent;b.textContent='Copied!';setTimeout(function(){b.textContent=old;},1500);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(function(){done();});}else{var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(err){}document.body.removeChild(ta);done();}});});</script>`;
 }
 
 function authScript() {
@@ -55,6 +55,26 @@ const AUTH_TITLES = ['Merchant login', 'Merchant registration', 'Admin login', '
 
 const DISCLAIMER = 'A QR code, redirect, screenshot or “I have paid” click is never proof of payment. Orders stay pending until payment verification by manual reconciliation, a configured provider, or an optional external observer.';
 
+export function ordersTrendChart(days) {
+  // days: [{ date: 'YYYY-MM-DD', total: Number, success: Number }] for the
+  // last 14 days, already filled with zeros for days without orders.
+  // Pure server-rendered SVG: no external chart library, no CDN dependency,
+  // so the chart works on shared hosting even when third-party scripts fail.
+  const total = days.reduce((a, d) => a + d.total, 0);
+  if (!total) return '<p class="muted">No orders in the last 14 days, so there is no trend to chart yet. The chart appears automatically once orders exist.</p>';
+  const max = Math.max(1, ...days.map((d) => d.total));
+  const W = 560, H = 150, base = 128, bw = 26, gap = 12;
+  const bars = days.map((d, i) => {
+    const x = 8 + i * (bw + gap);
+    const h = Math.round((d.total / max) * 110) || 1;
+    const hs = Math.round((d.success / max) * 110);
+    const label = i % 3 === 0 ? `<text x="${x + bw / 2}" y="146" text-anchor="middle" font-size="10" fill="#64748b">${escapeHtml(d.date.slice(5))}</text>` : '';
+    return `<g><title>${escapeHtml(d.date)}: ${d.total} order${d.total === 1 ? '' : 's'}, ${d.success} successful</title><rect x="${x}" y="${base - h}" width="${bw}" height="${h}" rx="4" fill="#ddd6fe"/><rect x="${x}" y="${base - hs}" width="${bw}" height="${hs}" rx="4" fill="#7c3aed"/>${label}</g>`;
+  }).join('');
+  const peak = days.reduce((a, d) => (d.total > a.total ? d : a), days[0]);
+  return `<div class="chart-card"><svg viewBox="0 0 ${W} 156" width="100%" role="img" aria-label="Orders per day for the last 14 days">${bars}</svg><p class="chart-legend"><span><i class="sw violet"></i>Successful</span><span><i class="sw light"></i>All orders</span><span>Peak: ${peak.total} on ${escapeHtml(peak.date)}</span></p><p class="muted small">Source: orders table, last 14 days. Hover a bar for that day's counts.</p></div>`;
+}
+
 export function layout({ title, body, user, nav, variant, hideTitle }) {
   const hasNav = Boolean(nav);
   const navHtml = nav || DEFAULT_PUBLIC_NAV;
@@ -63,7 +83,7 @@ export function layout({ title, body, user, nav, variant, hideTitle }) {
   const isAuthPage = !user && !hasNav && AUTH_TITLES.includes(title);
   const shell = variant || (isAuthPage ? 'auth' : isAdmin ? 'admin' : isMerchant ? 'merchant' : 'public');
   const safeTitle = escapeHtml(title);
-  const head = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="YOUPI PG — multi-merchant UPI payment gateway with QR checkout, API, webhooks and manual payment verification."><title>${safeTitle} — YOUPI PG</title><link rel="stylesheet" href="/public/css/style.css?v=3"></head><body>`;
+  const head = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="YOUPI PG — multi-merchant UPI payment gateway with QR checkout, API, webhooks and manual payment verification."><title>${safeTitle} — YOUPI PG</title><link rel="stylesheet" href="/public/css/style.css?v=4"></head><body>`;
   const userActions = user
     ? `<span class="account-label">${escapeHtml(user.label)}</span> <a class="btn btn-ghost btn-sm" href="${escapeHtml(user.logout)}">Log out</a>`
     : `<a class="btn btn-ghost btn-sm" href="/merchant/login">Login</a> <a class="btn btn-sm" href="/merchant/register">Get started</a>`;
