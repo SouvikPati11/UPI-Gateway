@@ -159,10 +159,12 @@ describe('Mobile navigation drawer and dashboard polish', { skip: !enabled }, ()
     assert.doesNotMatch(ad.text, /<canvas/, 'no chart canvas may appear without real chart data wiring');
   });
 
-  test('public mobile nav stays full-width (no narrow strip there either)', async () => {
+  test('public mobile nav is a proper drawer (no narrow strip there either)', async () => {
     const css = await req('GET', '/public/css/style.css?v=3');
-    assert.match(css.text, /\.mobile-nav-panel\{[^}]*left:0;right:0/, 'public mobile panel must span the header width');
+    assert.match(css.text, /\.mobile-nav-panel\{position:fixed;top:0;left:0;bottom:0;width:min\(88vw,320px\)/, 'public mobile panel must be a fixed dark drawer, not a thin strip');
+    assert.match(css.text, /\.mobile-nav-panel\{[^}]*background:#0b1220/);
     const home = await req('GET', '/');
     assert.match(home.text, /mobile-nav/);
+    assert.match(home.text, /drawer-close dark/);
   });
 });

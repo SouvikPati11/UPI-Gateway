@@ -125,16 +125,16 @@ describe('Premium SaaS redesign: charts, copy, docs, homepage', { skip: !enabled
     assert.match(home.text, /in five steps/);
     const steps = home.text.match(/class="step"/g) || [];
     assert.equal(steps.length, 5, `workflow must have exactly 5 steps, found ${steps.length}`);
-    assert.match(home.text, /Authorized verification/);
+    assert.match(home.text, /<h3>Verification<\/h3>/);
     assert.match(home.text, /never proves payment on its own/);
     assert.match(home.text, /mock-wide/);
     assert.match(home.text, /Demo illustration — sample bars only, not company performance/);
     assert.match(home.text, /<div class="feature-icon" aria-hidden="true"><svg/);
-    assert.match(home.text, /style\.css\?v=4/);
+    assert.match(home.text, /style\.css\?v=5/);
   });
 
   test('design system CSS: violet/electric accents, drawer intact, chart + copy styles', async () => {
-    const css = await req('GET', '/public/css/style.css?v=4');
+    const css = await req('GET', '/public/css/style.css?v=5');
     assert.equal(css.status, 200);
     assert.match(css.contentType || '', /text\/css/);
     assert.match(css.text, /--violet:#7c3aed/);
@@ -151,7 +151,10 @@ describe('Premium SaaS redesign: charts, copy, docs, homepage', { skip: !enabled
     assert.match(ad.text, /Orders per day — last 14 days/);
     assert.match(ad.text, /<svg viewBox="0 0 560 156"/);
     assert.match(ad.text, /Source: orders table, last 14 days/);
-    assert.match(ad.text, /Success: 0 · Pending: 1 · Failed: 0/);
+    assert.match(ad.text, /Total revenue/);
+    assert.match(ad.text, /Total orders/);
+    assert.match(ad.text, /stat-card/);
+    assert.match(ad.text, /Prior 14 days/);
     assert.doesNotMatch(ad.text, /Demo illustration/);
   });
 
